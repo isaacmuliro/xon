@@ -28,10 +28,15 @@ Napi::Value ConvertToJS(Napi::Env env, const XonValue* value) {
         case XON_TYPE_OBJECT: {
             Napi::Object obj = Napi::Object::New(env);
             size_t size = xon_object_size(value);
-            
-            // We need to iterate through object keys
-            // For now, we'll skip proper key iteration (requires API enhancement)
-            // This is a placeholder that would need the actual key enumeration API
+
+            for (size_t i = 0; i < size; i++) {
+                const char* key = xon_object_key_at(value, i);
+                XonValue* item = xon_object_value_at(value, i);
+                if (key) {
+                    obj.Set(key, ConvertToJS(env, item));
+                }
+            }
+
             return obj;
         }
         
@@ -49,6 +54,20 @@ Napi::Value ConvertToJS(Napi::Env env, const XonValue* value) {
         default:
             return env.Null();
     }
+}
+
+static bool GetPrettyOption(const Napi::CallbackInfo& info, size_t index, bool default_value, bool* ok) {
+    Napi::Env env = info.Env();
+
+    *ok = 1;
+    if (info.Length() <= index) return default_value;
+    if (!info[index].IsBoolean()) {
+        Napi::TypeError::New(env, "Boolean expected for pretty option").ThrowAsJavaScriptException();
+        *ok = 0;
+        return default_value;
+    }
+
+    return info[index].As<Napi::Boolean>().Value();
 }
 
 // Branded: xonify() - Parse file function
@@ -95,10 +114,129 @@ Napi::Value XonifyString(const Napi::CallbackInfo& info) {
     return jsValue;
 }
 
+Napi::Value XonifyToXon(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    bool ok = 0;
+    bool pretty = 1;
+    std::string path;
+    XonValue* parsed = NULL;
+    char* rendered = NULL;
+    Napi::Value result = env.Null();
+
+    if (info.Length() < 1 || !info[0].IsString()) {
+        Napi::TypeError::New(env, "String expected").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+
+    pretty = GetPrettyOption(info, 1, 1, &ok);
+    if (!ok) return env.Null();
+
+    path = info[0].As<Napi::String>();
+    parsed = xonify(path.c_str());
+    if (!parsed) {
+        Napi::Error::New(env, "Failed to parse file").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+
+    rendered = xon_to_xon(parsed, pretty ? 1 : 0);
+    xon_free(parsed);
+    if (!rendered) {
+        Napi::Error::New(env, "Failed to serialize Xon output").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+
+    result = Napi::String::New(env, rendered);
+    xon_string_free(rendered);
+    return result;
+}
+
+Napi::Value XonifyToJson(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    bool ok = 0;
+    bool pretty = 1;
+    std::string path;
+    XonValue* parsed = NULL;
+    char* rendered = NULL;
+    Napi::Value result = env.Null();
+
+    if (info.Length() < 1 || !info[0].IsString()) {
+        Napi::TypeError::New(env, "String expected").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+
+    pretty = GetPrettyOption(info, 1, 1, &ok);
+    if (!ok) return env.Null();
+
+    path = info[0].As<Napi::String>();
+    parsed = xonify(path.c_str());
+    if (!parsed) {
+        Napi::Error::New(env, "Failed to parse file").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+
+    rendered = xon_to_json(parsed, pretty ? 1 : 0);
+    xon_free(parsed);
+    if (!rendered) {
+        Napi::Error::New(env, "Failed to serialize JSON output").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+
+    result = Napi::String::New(env, rendered);
+    xon_string_free(rendered);
+    return result;
+}
+
+Napi::Value XonEvalToXon(const Napi::CallbackInfo& info) {
+    Napi::Env env = info.Env();
+    bool ok = 0;
+    bool pretty = 1;
+    std::string path;
+    XonValue* parsed = NULL;
+    XonValue* evaluated = NULL;
+    char* rendered = NULL;
+    Napi::Value result = env.Null();
+
+    if (info.Length() < 1 || !info[0].IsString()) {
+        Napi::TypeError::New(env, "String expected").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+
+    pretty = GetPrettyOption(info, 1, 1, &ok);
+    if (!ok) return env.Null();
+
+    path = info[0].As<Napi::String>();
+    parsed = xonify(path.c_str());
+    if (!parsed) {
+        Napi::Error::New(env, "Failed to parse file").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+
+    evaluated = xon_eval(parsed);
+    xon_free(parsed);
+    if (!evaluated) {
+        Napi::Error::New(env, "Failed to evaluate file").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+
+    rendered = xon_to_xon(evaluated, pretty ? 1 : 0);
+    xon_free(evaluated);
+    if (!rendered) {
+        Napi::Error::New(env, "Failed to serialize evaluation output").ThrowAsJavaScriptException();
+        return env.Null();
+    }
+
+    result = Napi::String::New(env, rendered);
+    xon_string_free(rendered);
+    return result;
+}
+
 // Module initialization
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
     exports.Set("xonify", Napi::Function::New(env, Xonify));
     exports.Set("xonifyString", Napi::Function::New(env, XonifyString));
+    exports.Set("xonifyToXon", Napi::Function::New(env, XonifyToXon));
+    exports.Set("xonifyToJson", Napi::Function::New(env, XonifyToJson));
+    exports.Set("xonEvalToXon", Napi::Function::New(env, XonEvalToXon));
     return exports;
 }
 

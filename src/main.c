@@ -1,173 +1,260 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "lexer.h"
-#include "xon.c"
 
-// --- VISITOR FUNCTIONS ---
+#include "../include/xon_api.h"
+#include "logger.h"
 
-// Get a value from an object by key
-DataNode* xon_get_key(DataNode* obj, const char* key) {
-    if (!obj || obj->type != TYPE_OBJECT) return NULL;
-    
-    // The object wrapper contains the list of pairs in 'value'
-    DataNode* current = obj->data.aggregate.value;
-    while (current) {
-        // Each item in the list is a PAIR (TYPE_OBJECT)
-        if (current->data.aggregate.key && 
-            strcmp(current->data.aggregate.key->data.s_val, key) == 0) {
-            return current->data.aggregate.value;
+static int ends_with(const char* str, const char* suffix) {
+    size_t str_len;
+    size_t suffix_len;
+    if (!str || !suffix) return 0;
+    str_len = strlen(str);
+    suffix_len = strlen(suffix);
+    if (suffix_len > str_len) return 0;
+    return strcmp(str + (str_len - suffix_len), suffix) == 0;
+}
+
+static int write_text_file(const char* path, const char* content) {
+    FILE* out = fopen(path, "w");
+    if (!out) {
+        perror("Failed to open output file");
+        return 1;
+    }
+    if (fputs(content, out) == EOF) {
+        perror("Failed to write output");
+        fclose(out);
+        return 1;
+    }
+    fclose(out);
+    return 0;
+}
+
+static void print_usage(const char* program) {
+    fprintf(stderr,
+            "Usage:\n"
+            "  %s <file.xon>\n"
+            "  %s parse <file.xon>\n"
+            "  %s validate <file.xon>\n"
+            "  %s format <input.xon> [-o output.xon]\n"
+            "  %s convert <input.(xon|json)> <output.(json|xon)>\n"
+            "  %s eval <file.xon>\n",
+            program, program, program, program, program, program);
+    xon_log_warn("cli", "Invalid CLI usage invoked");
+}
+
+static int cmd_parse(const char* input_path) {
+    XonValue* root = xonify(input_path);
+    if (!root) {
+        fprintf(stderr, "Parse failed for %s\n", input_path);
+        xon_log_error("cli", "Parse failed for %s", input_path);
+        return 1;
+    }
+
+    printf("Parse successful: %s\n", input_path);
+    xon_log_info("cli", "Parse successful for %s", input_path);
+    xon_print(root);
+    xon_free(root);
+    return 0;
+}
+
+static int cmd_validate(const char* input_path) {
+    XonValue* root = xonify(input_path);
+    if (!root) {
+        fprintf(stderr, "Invalid Xon: %s\n", input_path);
+        xon_log_error("cli", "Validation failed for %s", input_path);
+        return 1;
+    }
+    printf("Valid Xon: %s\n", input_path);
+    xon_log_info("cli", "Validation succeeded for %s", input_path);
+    xon_free(root);
+    return 0;
+}
+
+static int cmd_format(const char* input_path, const char* output_path) {
+    XonValue* root = xonify(input_path);
+    char* formatted;
+    int rc = 0;
+
+    if (!root) {
+        fprintf(stderr, "Parse failed for %s\n", input_path);
+        xon_log_error("cli", "Format parse failed for %s", input_path);
+        return 1;
+    }
+
+    formatted = xon_to_xon(root, 1);
+    if (!formatted) {
+        fprintf(stderr, "Failed to format %s\n", input_path);
+        xon_log_error("cli", "Formatting failed for %s", input_path);
+        xon_free(root);
+        return 1;
+    }
+
+    if (output_path) {
+        rc = write_text_file(output_path, formatted);
+        if (!rc) {
+            printf("Formatted Xon written to %s\n", output_path);
+            xon_log_info("cli", "Formatted output written to %s", output_path);
         }
-        current = current->next;
+    } else {
+        printf("%s\n", formatted);
+        xon_log_info("cli", "Formatted output written to stdout");
     }
-    return NULL;
+
+    xon_string_free(formatted);
+    xon_free(root);
+    return rc;
 }
 
-// --- UTILITIES ---
+static int cmd_convert(const char* input_path, const char* output_path) {
+    XonValue* root = xonify(input_path);
+    char* serialized = NULL;
+    int rc;
 
-void print_ast(DataNode* node, int depth) {
-    if (!node) return;
-    for (int i = 0; i < depth; i++) printf("  ");
-
-    switch (node->type) {
-        case TYPE_OBJECT:
-            printf("OBJECT\n");
-            DataNode* current = node->data.aggregate.value;
-            while (current) {
-                for (int i = 0; i < depth + 1; i++) printf("  ");
-                if (current->data.aggregate.key) {
-                    printf("Key: %s\n", current->data.aggregate.key->data.s_val);
-                }
-                print_ast(current->data.aggregate.value, depth + 2);
-                current = current->next; // Use new next pointer
-            }
-            break;
-        case TYPE_LIST:
-            printf("LIST\n");
-            DataNode* item = node->data.aggregate.value;
-            while (item) {
-                print_ast(item, depth + 1);
-                item = item->next; // Use new next pointer
-            }
-            break;
-        case TYPE_STRING:
-            printf("STRING: \"%s\"\n", node->data.s_val);
-            break;
-        case TYPE_NUMBER:
-            printf("NUMBER: %f\n", node->data.n_val);
-            break;
-        case TYPE_BOOL:
-            printf("BOOL: %s\n", node->data.b_val ? "true" : "false");
-            break;
-        case TYPE_NULL:
-            printf("NULL\n");
-            break;
+    if (!root) {
+        fprintf(stderr, "Parse failed for %s\n", input_path);
+        xon_log_error("cli", "Convert parse failed for %s", input_path);
+        return 1;
     }
+
+    if (ends_with(output_path, ".json")) {
+        serialized = xon_to_json(root, 1);
+    } else if (ends_with(output_path, ".xon")) {
+        serialized = xon_to_xon(root, 1);
+    } else {
+        fprintf(stderr, "Unsupported output extension: %s\n", output_path);
+        xon_log_warn("cli", "Unsupported output extension: %s", output_path);
+        xon_free(root);
+        return 1;
+    }
+
+    if (!serialized) {
+        fprintf(stderr, "Failed to convert %s\n", input_path);
+        xon_log_error("cli", "Conversion failed for %s", input_path);
+        xon_free(root);
+        return 1;
+    }
+
+    rc = write_text_file(output_path, serialized);
+    if (!rc) {
+        printf("Converted %s -> %s\n", input_path, output_path);
+        xon_log_info("cli", "Converted %s -> %s", input_path, output_path);
+    }
+
+    xon_string_free(serialized);
+    xon_free(root);
+    return rc;
 }
 
-void free_xon_ast(DataNode* node) {
-    if (!node) return;
+static int cmd_eval(const char* input_path) {
+    XonValue* root = xonify(input_path);
+    XonValue* evaluated;
+    char* rendered = NULL;
+    int rc = 0;
 
-    // 1. Free children based on type
-    if (node->type == TYPE_STRING) {
-        if (node->data.s_val) free(node->data.s_val);
-    }
-    else if (node->type == TYPE_OBJECT) {
-        if (node->data.aggregate.key) free_xon_ast(node->data.aggregate.key);
-        if (node->data.aggregate.value) free_xon_ast(node->data.aggregate.value);
-    }
-    else if (node->type == TYPE_LIST) {
-        if (node->data.aggregate.value) free_xon_ast(node->data.aggregate.value);
+    if (!root) {
+        fprintf(stderr, "Parse failed for %s\n", input_path);
+        xon_log_error("cli", "Evaluation parse failed for %s", input_path);
+        return 1;
     }
 
-    // 2. Free siblings (linked list)
-    if (node->next) {
-        free_xon_ast(node->next);
+    evaluated = xon_eval(root);
+    if (!evaluated) {
+        fprintf(stderr, "Evaluation failed for %s\n", input_path);
+        xon_free(root);
+        xon_log_error("cli", "Evaluation failed for %s", input_path);
+        return 1;
     }
 
-    // 3. Free current node
-    free(node);
+    rendered = xon_to_xon(evaluated, 1);
+    if (!rendered) {
+        fprintf(stderr, "Failed to serialize evaluation result for %s\n", input_path);
+        xon_log_error("cli", "Evaluation serialization failed for %s", input_path);
+        rc = 1;
+    } else {
+        printf("%s\n", rendered);
+        xon_string_free(rendered);
+        xon_log_info("cli", "Evaluation output written to stdout");
+    }
+
+    xon_free(evaluated);
+    xon_free(root);
+    return rc;
 }
 
 int main(int argc, char** argv) {
-    if (argc < 2) {
-        fprintf(stderr, "Usage: %s <filename.xon>\n", argv[0]);
+    const char* command;
+    int rc = 1;
+
+    xon_logger_init("xon-cli");
+    xon_logger_set_directory("logs");
+    xon_log_info("cli", "CLI invocation started");
+
+    if (argc == 2) {
+        rc = cmd_parse(argv[1]);
+        xon_shutdown_logging();
+        return rc;
+    }
+
+    if (argc < 3) {
+        print_usage(argv[0]);
+        xon_shutdown_logging();
         return 1;
     }
 
-    FILE* f = fopen(argv[1], "r");
-    if (!f) {
-        perror("Failed to open file");
+    command = argv[1];
+
+    if (strcmp(command, "parse") == 0) {
+        rc = cmd_parse(argv[2]);
+        xon_shutdown_logging();
+        return rc;
+    }
+
+    if (strcmp(command, "validate") == 0) {
+        rc = cmd_validate(argv[2]);
+        xon_shutdown_logging();
+        return rc;
+    }
+
+    if (strcmp(command, "format") == 0) {
+        if (argc == 3) {
+            rc = cmd_format(argv[2], NULL);
+            xon_shutdown_logging();
+            return rc;
+        }
+        if (argc == 5 && strcmp(argv[3], "-o") == 0) {
+            rc = cmd_format(argv[2], argv[4]);
+            xon_shutdown_logging();
+            return rc;
+        }
+        print_usage(argv[0]);
+        xon_shutdown_logging();
         return 1;
     }
 
-    void* pParser = xonParserAlloc(malloc);
-    DataNode* root = NULL;
-    XonTokenData tokenData;
-    char* errMsg = NULL;
-    int tokenID;
-    int currentLine = 1;
-
-    while ((tokenID = xon_get_token(f, &tokenData, &errMsg, &currentLine)) != 0) {
-        if (tokenID == -1) {
-            fprintf(stderr, "Lexer Error at line %d: %s\n", currentLine, errMsg);
-            free(errMsg);
-            break;
+    if (strcmp(command, "convert") == 0) {
+        if (argc != 4) {
+            print_usage(argv[0]);
+            xon_shutdown_logging();
+            return 1;
         }
-        Token parserToken;
-        parserToken.s_val = tokenData.sVal;
-        parserToken.n_val = tokenData.nVal;
-        parserToken.line = currentLine;
-
-        xonParser(pParser, tokenID, parserToken, &root);
+        rc = cmd_convert(argv[2], argv[3]);
+        xon_shutdown_logging();
+        return rc;
     }
 
-    Token emptyToken = {0};
-    emptyToken.line = currentLine;
-    xonParser(pParser, 0, emptyToken, &root);
-
-       
-        if (root) {
-            printf("Parsing Successful! AST Structure:\n");
-            print_ast(root, 0);
-    
-            // --- DEMO VISITOR PATTERN ---
-            printf("\n--- Visitor Demo (Dynamic Traversal) ---\n");
-            
-            if (root->type == TYPE_OBJECT) {
-                // The root object contains a linked list of pairs in 'value'
-                DataNode* pair = root->data.aggregate.value;
-                
-                while (pair) {
-                    // Each node in this list is a PAIR (which is a TYPE_OBJECT wrapper)
-                    if (pair->data.aggregate.key) {
-                        printf("Found Key: %-15s ", pair->data.aggregate.key->data.s_val);
-                        
-                        DataNode* val = pair->data.aggregate.value;
-                        if (val) {
-                            switch(val->type) {
-                                case TYPE_STRING: printf("-> String: \"%s\"\n", val->data.s_val); break;
-                                case TYPE_NUMBER: printf("-> Number: %g\n", val->data.n_val); break;
-                                case TYPE_BOOL:   printf("-> Bool: %s\n", val->data.b_val ? "true" : "false"); break;
-                                case TYPE_NULL:   printf("-> Null\n"); break;
-                                case TYPE_LIST:   printf("-> [List]\n"); break;
-                                case TYPE_OBJECT: printf("-> {Object}\n"); break;
-                            }
-                        }
-                    }
-                    // Move to the next pair in the object
-                    pair = pair->next;
-                }
-            } else {
-                printf("Root is not an object.\n");
-            }
-        } else {
-            printf("Parsing Failed.\n");
+    if (strcmp(command, "eval") == 0) {
+        if (argc != 3) {
+            print_usage(argv[0]);
+            xon_shutdown_logging();
+            return 1;
         }
-    
-        xonParserFree(pParser, free);
-        fclose(f);
-        if (root) free_xon_ast(root);
-        
-        return 0;
+        rc = cmd_eval(argv[2]);
+        xon_shutdown_logging();
+        return rc;
     }
+
+    print_usage(argv[0]);
+    xon_shutdown_logging();
+    return 1;
+}

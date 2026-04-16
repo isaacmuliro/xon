@@ -5,18 +5,90 @@
 
 **Xon** is a modern, developer-friendly configuration language that extends JSON with practical features for real-world use cases. Built in C with a hand-written lexer and LALR(1) parser.
 
-## ✨ Features
+## Features
 
 Xon provides all the structure of JSON, plus:
 
-- **Comments** - C-style `//` comments for documentation
+- **Comments** - Line (`//`) and block (`/* ... */`) comments for documentation
 - **Hexadecimal Numbers** - Native support for hex literals (`0xFF`, `0x1A`)
 - **Trailing Commas** - No more syntax errors from trailing commas
 - **Unquoted Keys** - Clean syntax: `name: "value"` instead of `"name": "value"`
 - **Escape Sequences** - Full support for `\n`, `\t`, `\"`, `\\`, etc.
 - **Line-Based Error Reporting** - Precise error messages with line numbers
 
-## 📋 Quick Example
+## What Developers Should Expect in v1.0.0
+
+Xon v1.0.0 is ready for production use as a native config parser/runtime for trusted application configuration files.
+
+What is stable in v1.0.0:
+- Node package `@xerxisfy/xon` with native addon and CLI (`xon`).
+- Parsing and serialization for JSON-compatible data plus Xon syntax extensions.
+- CLI workflows for `validate`, `format`, `convert`, and `eval`.
+- Runtime expressions (`let/const`, operators, functions, closures, built-ins).
+- C API for parse, eval, traversal, and serialization.
+
+Recommended production usage:
+- Use Xon for application and service configuration files stored in your own repositories.
+- Run `xon validate` and `xon format` in CI to enforce config quality.
+- Parse with Xon, then validate schema at the app layer.
+- Treat runtime eval as trusted-input-only unless you add process isolation and strict limits.
+
+What is not yet in v1.0.0:
+- First-class module/import/include system.
+- Built-in schema validation engine.
+- Full advanced literal set (for example binary/octal literals).
+
+##  Build-Time JSON Workflow (Recommended for Web Apps)
+
+Browsers and most frontend frameworks do not natively read `.xon` files.  
+The production-safe pattern is to compile `.xon` to `.json` at build time.
+
+Xon CLI includes `build` for this:
+
+```bash
+# zero-config default
+# input:  config/app.xon
+# output: src/generated/app-config.json
+npx xon build
+
+# explicit single file
+npx xon build config/app.xon src/generated/app-config.json
+
+# convert all .xon files in a directory
+npx xon build config src/generated
+```
+
+You can also add a project config so developers just run `xon build`:
+
+```json
+{
+  "build": {
+    "input": "config",
+    "output": "src/generated"
+  }
+}
+```
+
+Save that as `xon.config.json` in your project root.
+
+Then import generated JSON in your app:
+
+```javascript
+import appConfig from "./generated/app-config.json";
+```
+
+Example package scripts:
+
+```json
+{
+  "scripts": {
+    "xon:build": "xon build config src/generated",
+    "build": "npm run xon:build && vite build"
+  }
+}
+```
+
+## Quick Example
 
 ```javascript
 {
@@ -37,7 +109,7 @@ Xon provides all the structure of JSON, plus:
 }
 ```
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 
@@ -49,56 +121,28 @@ Xon provides all the structure of JSON, plus:
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/xon.git
+git clone https://github.com/xerxisfy/xon.git
 cd xon
 
-# Generate the parser
-./tools/lemon xon.lemon
-
-# Compile
-gcc -o xon main.c lexer.c -Wall -Wextra
+# Build CLI + shared library
+./build.sh
 
 # Run
-./xon test.xon
+./xon validate tests/test.xon
+./xon format tests/test.xon
+./xon convert tests/test.xon /tmp/test.json
+./xon eval tests/test.xon
 ```
 
-### Using a Makefile (Recommended)
+### Using Make
 
-Create a `Makefile` in your project root:
-
-```makefile
-CC = gcc
-CFLAGS = -Wall -Wextra -std=c99
-LEMON = ./tools/lemon
-
-SOURCES = main.c lexer.c xon.c
-TARGET = xon
-
-all: $(TARGET)
-
-xon.c: xon.lemon
-    $(LEMON) xon.lemon
-
-$(TARGET): xon.c $(SOURCES)
-    $(CC) $(CFLAGS) -o $(TARGET) main.c lexer.c
-
-clean:
-    rm -f xon.c xon.h xon.out $(TARGET)
-
-test: $(TARGET)
-    ./$(TARGET) test.xon
-
-.PHONY: all clean test
-```
-
-Then simply run:
 ```bash
 make          # Build the project
 make test     # Run tests
 make clean    # Clean build artifacts
 ```
 
-## 📖 Language Specification
+##  Language Specification
 
 ### Data Types
 
@@ -114,7 +158,7 @@ make clean    # Clean build artifacts
 ### Syntax Rules
 
 1. **Keys** can be quoted (`"name"`) or unquoted (`name`) if they're valid identifiers
-2. **Comments** start with `//` and continue to end of line
+2. **Comments** support `//`, `#`, and `/* block */` styles
 3. **Trailing commas** are allowed in objects and lists
 4. **Hex numbers** must start with `0x` or `0X`
 5. **Escape sequences**: `\n` (newline), `\t` (tab), `\"` (quote), `\\` (backslash), `\r` (carriage return)
@@ -126,7 +170,28 @@ root       ::= object | list
 object     ::= '{' pair_list? '}'
 list       ::= '[' value_list? ']'
 pair       ::= (STRING | IDENTIFIER) ':' value
-value      ::= STRING | NUMBER | BOOL | NULL | object | list
+value      ::= STRING | NUMBER | TRUE | FALSE | NULL_VAL | object | list
+            | expr | declaration
+
+declaration ::= ('let' | 'const') IDENTIFIER '=' expr
+
+expr       ::= if_statement
+            | ternary
+            | binary
+            | unary
+            | call
+            | function
+            | IDENTIFIER
+            | '(' expr ')'
+
+if_statement ::= 'if' '(' expr ')' expr 'else' expr
+ternary      ::= expr '?' expr ':' expr
+binary       ::= expr ('+' | '-' | '*' | '/' | '%' | '==' | '!=' | '<' | '<=' | '>' | '>=' | '&&' | '||' | '??') expr
+unary        ::= ('!' | '+' | '-') expr
+call         ::= expr '(' arg_list? ')'
+function     ::= '(' param_list? ')' '=>' expr
+param_list   ::= IDENTIFIER (',' IDENTIFIER)*
+arg_list     ::= expr (',' expr)*
 ```
 
 ## 🔧 API Reference
@@ -156,6 +221,45 @@ int main() {
     return 0;
 }
 ```
+
+### Runtime Evaluation (Round-1)
+
+Parse, then execute runtime expressions:
+
+```c
+#include <stdio.h>
+#include "include/xon_api.h"
+
+int main(void) {
+    XonValue* ast = xonify("examples/config.xon");
+    XonValue* evaluated;
+
+    if (!ast) return 1;
+    evaluated = xon_eval(ast);
+    if (!evaluated) {
+        xon_free(ast);
+        return 1;
+    }
+
+    char* rendered = xon_to_xon(evaluated, 1);
+    if (rendered) {
+        puts(rendered);
+        xon_string_free(rendered);
+    }
+
+    xon_free(evaluated);
+    xon_free(ast);
+    return 0;
+}
+```
+
+Round-1 runtime support includes:
+
+- `let` / `const` declarations, forward references, and scoped lookup.
+- Arithmetic and boolean expressions with precedence.
+- Conditional (`if` / ternary) and nullish (`??`) operators.
+- Anonymous functions, closures, and call expressions.
+- Built-ins: `abs`, `len`, `max`, `min`, `str`, `upper`, `lower`, `keys`, `has`, `env`.
 
 ### Visitor Pattern
 
@@ -230,32 +334,42 @@ DataNode* link_node(DataNode* head, DataNode* item);
 ### Running Tests
 
 ```bash
-# Compile
-gcc -o xon main.c lexer.c
+# End-to-end C + Python tests
+./scripts/run_tests.sh
 
-# Run test file
-./xon test.xon
+# Or via make
+make test
 ```
 
 ### Expected Output
 
 ```text
-Parsing Successful! AST Structure:
-OBJECT
-  Key: server_name
-    STRING: "XonServer"
-  Key: max_memory
-    NUMBER: 255.000000
-  Key: features
-    LIST
-      STRING: "fast"
-      STRING: "simple"
+=== Xon Test Suite ===
+All tests passed.
+{"status": "ok", "python_binding": "passed"}
+```
 
---- Visitor Demo (Dynamic Traversal) ---
-Found Key: server_name     -> String: "XonServer"
-Found Key: max_memory      -> Number: 255
-Found Key: features        -> [List]
-Memory cleaned up.
+### Logging System
+
+Xon now includes a file-based logging mechanism for CLI and parser/runtime errors.
+
+- Default log directory: `logs/`
+- Log file format: `logs/xon-cli-YYYY-MM-DD.log` (CLI) and `logs/xon-YYYY-MM-DD.log` (API/runtime)
+- Parser syntax errors, lexer errors, warnings, and operational info are written to log files.
+
+Environment variables:
+
+- `XON_LOG_DIR` - override log directory path
+- `XON_LOG_LEVEL` - one of `debug`, `info`, `warn`, `error`
+- `XON_LOG_STDERR` - `0` (default) disables logger stderr mirroring, `1` enables mirroring
+
+Public API controls:
+
+```c
+int xon_set_log_directory(const char* directory);
+void xon_set_log_level(XonLogLevel level);
+void xon_enable_stderr_logging(int enabled);
+void xon_shutdown_logging(void);
 ```
 
 ### Creating Test Files
@@ -277,24 +391,36 @@ Example test file (`test.xon`):
 }
 ```
 
-## 📂 Project Structure
+##  Project Structure
 
 ```
 xon/
-├── main.c          # CLI driver and AST utilities
-├── lexer.c         # Tokenizer implementation
-├── lexer.h         # Lexer interface
-├── xon.lemon       # Grammar specification
-├── xon.c           # Generated parser (from xon.lemon)
-├── xon.h           # Generated parser header
-├── xon.out         # Parser state machine output
+├── src/
+│   ├── main.c      # CLI driver
+│   ├── lexer.c     # Tokenizer implementation
+│   ├── lexer.h     # Lexer interface
+│   ├── logger.c    # File-based logging system
+│   ├── logger.h    # Logger interface (internal)
+│   ├── xon.lemon   # Grammar specification
+│   ├── xon.c       # Generated parser
+│   └── xon_api.c   # Public C API implementation
+├── include/
+│   └── xon_api.h   # Public API header
+├── bindings/
+│   ├── xon_node.cpp
+│   └── python/
+│       └── xon.py
 ├── test.xon        # Test configuration file
 ├── tools/
 │   └── lemon       # Lemon parser generator
+├── docs.md         # Long-lived technical documentation
+├── release-docs.md # Release runbook and publishing instructions
+├── vscode-xon/     # VS Code extension package
+├── xon-language-server/ # LSP package for other IDEs
 └── README.md       # This file
 ```
 
-## 🤝 Contributing
+##  Contributing
 
 We welcome contributions! Here's how you can help:
 
@@ -314,13 +440,60 @@ Open an issue or discussion with:
 - Proposed syntax/behavior
 - Examples of how it would work
 
+## 📘 Additional Docs
+
+- Long-lived technical reference: `docs.md`
+- Release and publish runbook: `release-docs.md`
+
+##  Release Publishing
+
+### npm (core package)
+
+```bash
+npm run pack:preview
+npm publish --access public
+```
+
+### npm (language server package)
+
+```bash
+cd xon-language-server
+npm publish --access public
+```
+
+### PyPI
+
+```bash
+python3 -m pip install --upgrade build twine
+python3 -m build --wheel bindings/python --outdir dist-python
+python3 -m twine check dist-python/*
+python3 -m twine upload dist-python/*
+```
+
+### VS Code Marketplace
+
+```bash
+cd vscode-xon
+npm install
+npm run package
+npm run publish:vsce
+```
+
+### Release preflight
+
+Run this before tagging or publishing:
+
+```bash
+./scripts/release_check.sh
+```
+
 ### Pull Requests
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
 3. Make your changes
-4. Regenerate parser if grammar changed: `./tools/lemon xon.lemon`
-5. Test your changes: `./xon test.xon`
+4. Regenerate parser if grammar changed: `./tools/lemon src/xon.lemon`
+5. Test your changes: `./scripts/run_tests.sh`
 6. Commit with clear messages (`git commit -m 'Add amazing feature'`)
 7. Push to your fork (`git push origin feature/amazing-feature`)
 8. Open a Pull Request
@@ -333,7 +506,7 @@ Open an issue or discussion with:
 - Update documentation for new features
 - Ensure code compiles without warnings (`-Wall -Wextra`)
 
-## 🛣️ Roadmap
+##  Roadmap
 
 ### Version 1.0 (Current)
 - [x] Basic JSON-compatible parsing
@@ -361,7 +534,7 @@ Open an issue or discussion with:
 - [ ] Pretty-printer/formatter
 - [ ] JSON converter (`xon2json`, `json2xon`)
 
-## 🔍 Comparison with Other Formats
+##  Comparison with Other Formats
 
 | Feature | JSON | JSON5 | TOML | YAML | **Xon** |
 |---------|------|-------|------|------|---------|
@@ -373,7 +546,7 @@ Open an issue or discussion with:
 | Native C API | ❌ | ❌ | ❌ | ❌ | ✅ |
 | Simple Grammar | ✅ | ✅ | ❌ | ❌ | ✅ |
 
-## 📜 License
+##  License
 
 This project is licensed under the MIT License - see below for details:
 
@@ -401,7 +574,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - **Lemon Parser Generator** by D. Richard Hipp (creator of SQLite)
 - Inspired by JSON, JSON5, and TOML
@@ -410,21 +583,22 @@ SOFTWARE.
 
 ## 📞 Contact & Support
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/xon/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/xon/discussions)
-- **Documentation**: See `xon.docs/` directory
-- **Email**: your.email@example.com
+- **Maintainer**: Isaac Muliro
+- **Issues**: [GitHub Issues](https://github.com/xerxisfy/xon/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/xerxisfy/xon/discussions)
+- **Documentation**: `README.md`, `docs.md`, `release-docs.md`
+- **Email**: xerxisfyágmail.com
 
-## ⭐ Show Your Support
+##  Show Your Support
 
 If you find Xon useful, please consider:
-- Giving it a star on GitHub ⭐
+- Giving it a star on GitHub 
 - Sharing it with others who might benefit
 - Contributing code, documentation, or ideas
 - Reporting bugs and suggesting improvements
 
 ---
 
-**Made with ❤️ by Isaac Muliro**
+**Made with  by Isaac Muliro**
 
 *"Configuration should be simple, readable, and human-friendly."*

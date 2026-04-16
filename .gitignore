@@ -1,5 +1,5 @@
 # Build artifacts
-xon
+/xon
 *.o
 *.out
 build/xon.c
@@ -30,3 +30,8 @@ Thumbs.db
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Local release secrets / cache artifacts
+publish.local.sh
+.npm-cache/
+*.tgz

@@ -5,7 +5,8 @@
       "sources": [ 
         "bindings/xon_node.cpp", 
         "src/xon_api.c", 
-        "src/lexer.c" 
+        "src/lexer.c",
+        "src/logger.c"
       ],
       "include_dirs": [
         "<!@(node -p \"require('node-addon-api').include\")",

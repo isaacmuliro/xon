@@ -5,9 +5,11 @@
   "main": "index.html",
   "scripts": {
     "start": "http-server -p 8000 -c-1 -o",
+    "start:sandbox": "node service/server.js",
     "build": "./build_wasm.sh",
     "verify": "./verify.sh",
-    "dev": "npm run build && npm start"
+    "dev": "npm run build && npm start",
+    "dev:sandbox": "npm run build && npm run start:sandbox"
   },
   "keywords": [
     "xon",
@@ -15,7 +17,7 @@
     "parser",
     "wasm"
   ],
-  "author": "Your Name",
+  "author": "Isaac Muliro",
   "license": "MIT",
   "devDependencies": {
     "http-server": "^14.1.1"

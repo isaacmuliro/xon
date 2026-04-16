@@ -1,12 +1,30 @@
 {
-  "name": "xon",
-  "version": "1.0.0",
-  "description": "Xon - A modern, developer-friendly configuration language",
+  "name": "@xerxisfy/xon",
+  "version": "26.0.2",
+  "description": "Xon (Xerxis Object Notation) parser, CLI, and language bindings",
   "main": "index.js",
   "types": "bindings/xon.d.ts",
+  "homepage": "https://github.com/xerxisfy/xon",
+  "bugs": {
+    "url": "https://github.com/xerxisfy/xon/issues"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "bin": {
+    "xon": "bin/xon"
+  },
   "scripts": {
+    "build": "./build.sh",
     "install": "node-gyp rebuild",
-    "test": "node test.js"
+    "pack:preview": "npm pack --dry-run --cache ./.npm-cache",
+    "test": "./scripts/run_tests.sh",
+    "test:c": "gcc -Wall -Wextra -std=c99 -Iinclude -o /tmp/xon_test_suite tests/test_suite.c src/xon_api.c src/lexer.c src/logger.c && /tmp/xon_test_suite",
+    "test:node": "node test.js",
+    "test:cli": "./scripts/test_cli.sh",
+    "test:python": "python3 tests/test_python.py",
+    "prepublishOnly": "npm run test:c && npm run test:node && npm run test:cli && npm run pack:preview",
+    "publish:package": "npm publish"
   },
   "keywords": [
     "xon",
@@ -18,6 +36,46 @@
   ],
   "author": "Isaac Muliro",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xerxisfy/xon.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "bin/xon",
+    "bindings/xon_node.cpp",
+    "bindings/xon.d.ts",
+    "bindings/python/__init__.py",
+    "bindings/python/MANIFEST.in",
+    "bindings/python/pyproject.toml",
+    "bindings/python/setup.py",
+    "bindings/python/xon.py",
+    "include/xon_api.h",
+    "include/xon.h",
+    "src/lexer.c",
+    "src/lexer.h",
+    "src/logger.c",
+    "src/logger.h",
+    "src/main.c",
+    "src/xon_api.c",
+    "src/xon.c",
+    "src/xon.h",
+    "src/xon.lemon",
+    "scripts/release_check.sh",
+    "scripts/run_tests.sh",
+    "scripts/test_cli.sh",
+    "tools/lemon",
+    "tools/lempar.c",
+    "build.sh",
+    "binding.gyp",
+    "index.js",
+    "docs.md",
+    "release-docs.md",
+    "README.md",
+    "LICENSE"
+  ],
   "gypfile": true,
   "dependencies": {
     "node-addon-api": "^7.0.0"

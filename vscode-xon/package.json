@@ -1,0 +1,76 @@
+{
+  "name": "xon-language-support",
+  "displayName": "Xon Language Support",
+  "description": "Syntax highlighting, validation, and formatting support for .xon files",
+  "version": "1.0.0",
+  "publisher": "xerxisfy",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xerxisfy/xon",
+    "directory": "vscode-xon"
+  },
+  "bugs": {
+    "url": "https://github.com/xerxisfy/xon/issues"
+  },
+  "homepage": "https://github.com/xerxisfy/xon/tree/main/vscode-xon",
+  "keywords": [
+    "xon",
+    "configuration",
+    "json",
+    "language",
+    "formatting"
+  ],
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "scripts": {
+    "package": "vsce package",
+    "publish:vsce": "vsce publish"
+  },
+  "categories": [
+    "Programming Languages",
+    "Formatters"
+  ],
+  "activationEvents": [
+    "onLanguage:xon",
+    "onCommand:xon.validate",
+    "onCommand:xon.format"
+  ],
+  "main": "./src/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "xon",
+        "aliases": [
+          "Xon",
+          "xon"
+        ],
+        "extensions": [
+          ".xon"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "xon",
+        "scopeName": "source.xon",
+        "path": "./syntaxes/xon.tmGrammar.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "xon.validate",
+        "title": "Xon: Validate Current File"
+      },
+      {
+        "command": "xon.format",
+        "title": "Xon: Format Current File"
+      }
+    ]
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^3.2.1"
+  }
+}

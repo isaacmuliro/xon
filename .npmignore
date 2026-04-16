@@ -1,0 +1,3 @@
+# Transient/generated artifacts that should not ship in npm tarballs.
+src/xon.out
+bindings/python/__pycache__/

@@ -1,5 +1,5 @@
 // TypeScript type definitions for Xon
-declare module 'xon' {
+declare module '@xerxisfy/xon' {
     export type XonValue = null | boolean | number | string | XonObject | XonArray;
     
     export interface XonObject {
@@ -26,4 +26,13 @@ declare module 'xon' {
      * const data = xonifyString('{ name: "test", value: 42 }');
      */
     export function xonifyString(input: string): XonValue;
+
+    export function parseFile(path: string): XonValue;
+    export function parseString(input: string): XonValue;
+    export function parse(input: string): XonValue;
+    export function stringify(value: XonValue, options?: { indent?: number }): string;
+}
+
+declare module 'xon' {
+    export * from '@xerxisfy/xon';
 }

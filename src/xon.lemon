@@ -2,24 +2,159 @@
 %name xonParser
 
 %token_type {Token}
-%extra_argument { DataNode **pResult }
+%extra_argument { ParserState *pState }
 
 %syntax_error {
-    fprintf(stderr, "Syntax Error at line %d near token '%s'\n", TOKEN.line, TOKEN.s_val ? TOKEN.s_val : "unknown");
+    const char* token_text = TOKEN.s_val ? TOKEN.s_val : "unknown";
+    pState->had_error = 1;
+    if (pState->result) *pState->result = NULL;
+    if (pState->on_syntax_error) {
+        pState->on_syntax_error(TOKEN.line, token_text, pState->user_data);
+    } else {
+        fprintf(stderr, "Syntax Error at line %d near token '%s'\n", TOKEN.line, token_text);
+    }
+}
+
+%parse_failure {
+    pState->had_error = 1;
+    if (pState->result) *pState->result = NULL;
 }
 
 %type root {DataNode*}
 %type object {DataNode*}
-%type list {DataNode*}
 %type pair_list {DataNode*}
-%type value_list {DataNode*}
 %type pair {DataNode*}
-%type value {DataNode*}
+%type list {DataNode*}
+%type value_list {DataNode*}
+%type expr {DataNode*}
+%type ternary_expr {DataNode*}
+%type nullish_expr {DataNode*}
+%type or_expr {DataNode*}
+%type and_expr {DataNode*}
+%type eq_expr {DataNode*}
+%type rel_expr {DataNode*}
+%type add_expr {DataNode*}
+%type mul_expr {DataNode*}
+%type unary_expr {DataNode*}
+%type postfix_expr {DataNode*}
+%type primary_expr {DataNode*}
+%type arg_list {DataNode*}
+%type arg_list_opt {DataNode*}
+%type param_list {DataNode*}
+%type param_list_opt {DataNode*}
 
 %include {
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+typedef struct XonExpr XonExpr;
+
+typedef enum {
+    XON_EXPR_IDENTIFIER,
+    XON_EXPR_BINARY,
+    XON_EXPR_UNARY,
+    XON_EXPR_CALL,
+    XON_EXPR_MEMBER,
+    XON_EXPR_TERNARY,
+    XON_EXPR_IF,
+    XON_EXPR_FUNCTION
+} XonExprKind;
+
+typedef enum {
+    XON_EXPR_OP_OR,
+    XON_EXPR_OP_AND,
+    XON_EXPR_OP_EQ,
+    XON_EXPR_OP_NEQ,
+    XON_EXPR_OP_LT,
+    XON_EXPR_OP_LTE,
+    XON_EXPR_OP_GT,
+    XON_EXPR_OP_GTE,
+    XON_EXPR_OP_ADD,
+    XON_EXPR_OP_SUB,
+    XON_EXPR_OP_MUL,
+    XON_EXPR_OP_DIV,
+    XON_EXPR_OP_MOD,
+    XON_EXPR_OP_NULLISH,
+    XON_EXPR_OP_NEG,
+    XON_EXPR_OP_NOT,
+    XON_EXPR_OP_UNARY_PLUS
+} XonExprOp;
+
+struct XonExpr {
+    XonExprKind kind;
+    int line;
+    union {
+        char* identifier_name;
+
+        struct {
+            XonExprOp op;
+            struct DataNode* left;
+            struct DataNode* right;
+        } binary;
+
+        struct {
+            XonExprOp op;
+            struct DataNode* operand;
+        } unary;
+
+        struct {
+            struct DataNode* callee;
+            struct DataNode* args;
+        } call;
+
+        struct {
+            struct DataNode* object;
+            char* member;
+        } member;
+
+        struct {
+            struct DataNode* cond;
+            struct DataNode* then_expr;
+            struct DataNode* else_expr;
+        } ternary;
+
+        struct {
+            struct DataNode* params;
+            struct DataNode* body;
+        } function;
+    } u;
+};
+
+typedef enum {
+    TYPE_OBJECT,
+    TYPE_LIST,
+    TYPE_STRING,
+    TYPE_NUMBER,
+    TYPE_BOOL,
+    TYPE_NULL,
+    TYPE_EXPR,
+    TYPE_DECL,
+    TYPE_FUNCTION
+} DataType;
+
+typedef struct DataNode {
+    DataType type;
+    struct DataNode* next;
+    union {
+        char* s_val;
+        double n_val;
+        int b_val;
+        struct {
+            struct DataNode* key;
+            struct DataNode* value;
+        } aggregate;
+
+        struct {
+            int is_const;
+            char* name;
+            struct DataNode* init_expr;
+        } declaration;
+
+        XonExpr* expr;
+        void* function_data;
+    } data;
+} DataNode;
 
 typedef struct Token {
     char* s_val;
@@ -27,30 +162,16 @@ typedef struct Token {
     int line;
 } Token;
 
-enum DataType {
-    TYPE_OBJECT,
-    TYPE_LIST,
-    TYPE_STRING,
-    TYPE_NUMBER,
-    TYPE_BOOL, // NEW
-    TYPE_NULL  // NEW
-};
+typedef void (*XonSyntaxErrorHandler)(int line, const char* token, void* user_data);
 
-typedef struct DataNode {
-    enum DataType type;
-    struct DataNode *next; // NEW: Moved outside union to allow linking any node type
-    union {
-        char *s_val;
-        double n_val;
-        int b_val; // NEW: For booleans (1 or 0)
-        struct {
-            struct DataNode *key;
-            struct DataNode *value;
-        } aggregate;
-    } data;
-} DataNode;
+typedef struct ParserState {
+    struct DataNode** result;
+    int had_error;
+    XonSyntaxErrorHandler on_syntax_error;
+    void* user_data;
+} ParserState;
 
-DataNode* new_node(enum DataType type) {
+DataNode* new_node(DataType type) {
     DataNode* n = (DataNode*)malloc(sizeof(DataNode));
     if (n) {
         memset(n, 0, sizeof(DataNode));
@@ -62,22 +183,149 @@ DataNode* new_node(enum DataType type) {
 DataNode* link_node(DataNode* head, DataNode* item) {
     if (!head) return item;
     DataNode* current = head;
-    while (current->next) { // NEW: Use the outer 'next' pointer
+    while (current->next) {
         current = current->next;
     }
     current->next = item;
     return head;
 }
+
+static DataNode* new_pair_node(const char* key, DataNode* value) {
+    DataNode* node = new_node(TYPE_OBJECT);
+    if (!node) return NULL;
+    node->data.aggregate.key = new_node(TYPE_STRING);
+    if (!node->data.aggregate.key) {
+        free(node);
+        return NULL;
+    }
+    node->data.aggregate.key->data.s_val = (char*)key;
+    node->data.aggregate.value = value;
+    return node;
+}
+
+DataNode* new_list_node(DataNode* first_item) {
+    DataNode* list = new_node(TYPE_LIST);
+    if (!list) return NULL;
+    list->data.aggregate.value = first_item;
+    return list;
+}
+
+DataNode* new_expr_node(XonExpr* expr) {
+    DataNode* n = new_node(TYPE_EXPR);
+    if (!n) return NULL;
+    n->data.expr = expr;
+    return n;
+}
+
+XonExpr* xon_expr_identifier(const char* name, int line) {
+    XonExpr* expr = (XonExpr*)malloc(sizeof(XonExpr));
+    if (!expr) return NULL;
+    expr->kind = XON_EXPR_IDENTIFIER;
+    expr->line = line;
+    expr->u.identifier_name = (char*)name;
+    return expr;
+}
+
+XonExpr* xon_expr_binary(XonExprOp op, DataNode* left, DataNode* right, int line) {
+    XonExpr* expr = (XonExpr*)malloc(sizeof(XonExpr));
+    if (!expr) return NULL;
+    expr->kind = XON_EXPR_BINARY;
+    expr->line = line;
+    expr->u.binary.op = op;
+    expr->u.binary.left = left;
+    expr->u.binary.right = right;
+    return expr;
+}
+
+XonExpr* xon_expr_unary(XonExprOp op, DataNode* operand, int line) {
+    XonExpr* expr = (XonExpr*)malloc(sizeof(XonExpr));
+    if (!expr) return NULL;
+    expr->kind = XON_EXPR_UNARY;
+    expr->line = line;
+    expr->u.unary.op = op;
+    expr->u.unary.operand = operand;
+    return expr;
+}
+
+XonExpr* xon_expr_member(DataNode* object, const char* member, int line) {
+    XonExpr* expr = (XonExpr*)malloc(sizeof(XonExpr));
+    if (!expr) return NULL;
+    expr->kind = XON_EXPR_MEMBER;
+    expr->line = line;
+    expr->u.member.object = object;
+    expr->u.member.member = (char*)member;
+    return expr;
+}
+
+XonExpr* xon_expr_ternary(DataNode* cond, DataNode* then_expr, DataNode* else_expr, int line) {
+    XonExpr* expr = (XonExpr*)malloc(sizeof(XonExpr));
+    if (!expr) return NULL;
+    expr->kind = XON_EXPR_TERNARY;
+    expr->line = line;
+    expr->u.ternary.cond = cond;
+    expr->u.ternary.then_expr = then_expr;
+    expr->u.ternary.else_expr = else_expr;
+    return expr;
+}
+
+XonExpr* xon_expr_if(DataNode* cond, DataNode* then_expr, DataNode* else_expr, int line) {
+    XonExpr* expr = (XonExpr*)malloc(sizeof(XonExpr));
+    if (!expr) return NULL;
+    expr->kind = XON_EXPR_IF;
+    expr->line = line;
+    expr->u.ternary.cond = cond;
+    expr->u.ternary.then_expr = then_expr;
+    expr->u.ternary.else_expr = else_expr;
+    return expr;
+}
+
+XonExpr* xon_expr_call(DataNode* callee, DataNode* args, int line) {
+    XonExpr* expr = (XonExpr*)malloc(sizeof(XonExpr));
+    if (!expr) return NULL;
+    expr->kind = XON_EXPR_CALL;
+    expr->line = line;
+    expr->u.call.callee = callee;
+    expr->u.call.args = args;
+    return expr;
+}
+
+XonExpr* xon_expr_function(DataNode* params, DataNode* body, int line) {
+    XonExpr* expr = (XonExpr*)malloc(sizeof(XonExpr));
+    if (!expr) return NULL;
+    expr->kind = XON_EXPR_FUNCTION;
+    expr->line = line;
+    expr->u.function.params = params;
+    expr->u.function.body = body;
+    return expr;
+}
+
+DataNode* new_decl_node(int is_const, const char* name, DataNode* init_expr) {
+    DataNode* n = new_node(TYPE_DECL);
+    if (!n) return NULL;
+    n->data.declaration.is_const = is_const;
+    n->data.declaration.name = (char*)name;
+    n->data.declaration.init_expr = init_expr;
+    return n;
+}
+
+DataNode* new_param_node(const char* name) {
+    DataNode* node = new_node(TYPE_STRING);
+    if (!node) return NULL;
+    node->data.s_val = (char*)name;
+    return node;
+}
+
+ 
 }
 
 // --- GRAMMAR RULES ---
 
-root ::= object(A) . { *pResult = A; }
-root ::= list(A) .   { *pResult = A; }
+root ::= object(A) . { *pState->result = A; }
+root ::= list(A) .   { *pState->result = A; }
 
 // --- OBJECT RULES ---
 object(A) ::= LBRACE pair_list(B) RBRACE . { A = B; }
-object(A) ::= LBRACE pair_list(B) COMMA RBRACE . { A = B; } // NEW: Trailing comma support
+object(A) ::= LBRACE pair_list(B) COMMA RBRACE . { A = B; }
 object(A) ::= LBRACE RBRACE . { A = new_node(TYPE_OBJECT); }
 
 pair_list(A) ::= pair(B) . {
@@ -89,23 +337,17 @@ pair_list(A) ::= pair_list(B) COMMA pair(C) . {
     link_node(A->data.aggregate.value, C);
 }
 
-pair(A) ::= STRING(B) COLON value(C) . {
-    A = new_node(TYPE_OBJECT);
-    if (A) {
-        A->data.aggregate.key = new_node(TYPE_STRING);
-        A->data.aggregate.key->data.s_val = B.s_val;
-        A->data.aggregate.value = C;
-    }
+pair(A) ::= STRING(B) COLON expr(C) . {
+    A = new_pair_node(B.s_val, C);
 }
-
-// NEW: Unquoted keys (Identifiers)
-pair(A) ::= IDENTIFIER(B) COLON value(C) . {
-    A = new_node(TYPE_OBJECT);
-    if (A) {
-        A->data.aggregate.key = new_node(TYPE_STRING);
-        A->data.aggregate.key->data.s_val = B.s_val;
-        A->data.aggregate.value = C;
-    }
+pair(A) ::= IDENTIFIER(B) COLON expr(C) . {
+    A = new_pair_node(B.s_val, C);
+}
+pair(A) ::= LET IDENTIFIER(B) ASSIGN expr(C) . {
+    A = new_decl_node(0, B.s_val, C);
+}
+pair(A) ::= CONST IDENTIFIER(B) ASSIGN expr(C) . {
+    A = new_decl_node(1, B.s_val, C);
 }
 
 // --- LIST RULES ---
@@ -113,36 +355,143 @@ list(A) ::= LBRACKET value_list(B) RBRACKET . {
     A = new_node(TYPE_LIST);
     if (A) A->data.aggregate.value = B;
 }
-list(A) ::= LBRACKET value_list(B) COMMA RBRACKET . { // NEW: Trailing comma support
+list(A) ::= LBRACKET value_list(B) COMMA RBRACKET . {
     A = new_node(TYPE_LIST);
     if (A) A->data.aggregate.value = B;
 }
 list(A) ::= LBRACKET RBRACKET . { A = new_node(TYPE_LIST); }
 
-value_list(A) ::= value(B) . { A = B; }
-value_list(A) ::= value_list(B) COMMA value(C) . { A = link_node(B, C); }
+value_list(A) ::= expr(B) . { A = B; }
+value_list(A) ::= value_list(B) COMMA expr(C) . { A = link_node(B, C); }
 
-// --- VALUE RULES ---
-value(A) ::= STRING(B) . {
+// --- EXPRESSIONS ---
+expr(A) ::= ternary_expr(A).
+
+ternary_expr(A) ::= nullish_expr(B) QUESTION ternary_expr(C) COLON ternary_expr(D) . {
+    A = new_expr_node(xon_expr_ternary(B, C, D, B ? 0 : 0));
+}
+ternary_expr(A) ::= IF LPAREN expr(B) RPAREN ternary_expr(C) ELSE ternary_expr(D) . {
+    A = new_expr_node(xon_expr_if(B, C, D, B ? 0 : 0));
+}
+ternary_expr(A) ::= nullish_expr(B) . { A = B; }
+
+nullish_expr(A) ::= or_expr(B) . { A = B; }
+nullish_expr(A) ::= or_expr(B) NULLCOALESCE or_expr(C) . {
+    A = new_expr_node(xon_expr_binary(XON_EXPR_OP_NULLISH, B, C, 0));
+}
+
+or_expr(A) ::= or_expr(B) OR and_expr(C) . {
+    A = new_expr_node(xon_expr_binary(XON_EXPR_OP_OR, B, C, 0));
+}
+or_expr(A) ::= and_expr(B) . { A = B; }
+
+and_expr(A) ::= and_expr(B) AND eq_expr(C) . {
+    A = new_expr_node(xon_expr_binary(XON_EXPR_OP_AND, B, C, 0));
+}
+and_expr(A) ::= eq_expr(B) . { A = B; }
+
+eq_expr(A) ::= eq_expr(B) EQEQ rel_expr(C) . {
+    A = new_expr_node(xon_expr_binary(XON_EXPR_OP_EQ, B, C, 0));
+}
+eq_expr(A) ::= eq_expr(B) NOTEQ rel_expr(C) . {
+    A = new_expr_node(xon_expr_binary(XON_EXPR_OP_NEQ, B, C, 0));
+}
+eq_expr(A) ::= rel_expr(B) . { A = B; }
+
+rel_expr(A) ::= rel_expr(B) LT add_expr(C) . {
+    A = new_expr_node(xon_expr_binary(XON_EXPR_OP_LT, B, C, 0));
+}
+rel_expr(A) ::= rel_expr(B) LTE add_expr(C) . {
+    A = new_expr_node(xon_expr_binary(XON_EXPR_OP_LTE, B, C, 0));
+}
+rel_expr(A) ::= rel_expr(B) GT add_expr(C) . {
+    A = new_expr_node(xon_expr_binary(XON_EXPR_OP_GT, B, C, 0));
+}
+rel_expr(A) ::= rel_expr(B) GTE add_expr(C) . {
+    A = new_expr_node(xon_expr_binary(XON_EXPR_OP_GTE, B, C, 0));
+}
+rel_expr(A) ::= add_expr(B) . { A = B; }
+
+add_expr(A) ::= add_expr(B) PLUS mul_expr(C) . {
+    A = new_expr_node(xon_expr_binary(XON_EXPR_OP_ADD, B, C, 0));
+}
+add_expr(A) ::= add_expr(B) MINUS mul_expr(C) . {
+    A = new_expr_node(xon_expr_binary(XON_EXPR_OP_SUB, B, C, 0));
+}
+add_expr(A) ::= mul_expr(B) . { A = B; }
+
+mul_expr(A) ::= mul_expr(B) STAR unary_expr(C) . {
+    A = new_expr_node(xon_expr_binary(XON_EXPR_OP_MUL, B, C, 0));
+}
+mul_expr(A) ::= mul_expr(B) SLASH unary_expr(C) . {
+    A = new_expr_node(xon_expr_binary(XON_EXPR_OP_DIV, B, C, 0));
+}
+mul_expr(A) ::= mul_expr(B) PERCENT unary_expr(C) . {
+    A = new_expr_node(xon_expr_binary(XON_EXPR_OP_MOD, B, C, 0));
+}
+mul_expr(A) ::= unary_expr(B) . { A = B; }
+
+unary_expr(A) ::= NOT unary_expr(B) . {
+    A = new_expr_node(xon_expr_unary(XON_EXPR_OP_NOT, B, 0));
+}
+unary_expr(A) ::= PLUS unary_expr(B) . {
+    A = new_expr_node(xon_expr_unary(XON_EXPR_OP_UNARY_PLUS, B, 0));
+}
+unary_expr(A) ::= MINUS unary_expr(B) . {
+    A = new_expr_node(xon_expr_unary(XON_EXPR_OP_NEG, B, 0));
+}
+unary_expr(A) ::= postfix_expr(B) . { A = B; }
+
+postfix_expr(A) ::= postfix_expr(B) LPAREN arg_list_opt(C) RPAREN . {
+    A = new_expr_node(xon_expr_call(B, C, 0));
+}
+postfix_expr(A) ::= postfix_expr(B) DOT IDENTIFIER(C) . {
+    A = new_expr_node(xon_expr_member(B, C.s_val, 0));
+}
+postfix_expr(A) ::= primary_expr(B) . { A = B; }
+
+primary_expr(A) ::= IDENTIFIER(B) . {
+    A = new_expr_node(xon_expr_identifier(B.s_val, B.line));
+}
+primary_expr(A) ::= STRING(B) . {
     A = new_node(TYPE_STRING);
     if (A) A->data.s_val = B.s_val;
 }
-value(A) ::= NUMBER(B) . {
+primary_expr(A) ::= NUMBER(B) . {
     A = new_node(TYPE_NUMBER);
     if (A) A->data.n_val = B.n_val;
 }
-value(A) ::= object(B) . { A = B; }
-value(A) ::= list(B) . { A = B; }
-
-// NEW: Boolean and Null rules
-value(A) ::= TRUE . {
+primary_expr(A) ::= TRUE . {
     A = new_node(TYPE_BOOL);
     if (A) A->data.b_val = 1;
 }
-value(A) ::= FALSE . {
+primary_expr(A) ::= FALSE . {
     A = new_node(TYPE_BOOL);
     if (A) A->data.b_val = 0;
 }
-value(A) ::= NULL_VAL . {
+primary_expr(A) ::= NULL_VAL . {
     A = new_node(TYPE_NULL);
+}
+primary_expr(A) ::= object(B) . { A = B; }
+primary_expr(A) ::= list(B) . { A = B; }
+primary_expr(A) ::= LPAREN expr(B) RPAREN . { A = B; }
+primary_expr(A) ::= LPAREN param_list_opt(B) RPAREN ARROW expr(C) . {
+    A = new_expr_node(xon_expr_function(B, C, 0));
+}
+
+arg_list_opt(A) ::= . { A = NULL; }
+arg_list_opt(A) ::= arg_list(A) .
+
+arg_list(A) ::= expr(B) . { A = B; }
+arg_list(A) ::= arg_list(B) COMMA expr(C) . { A = link_node(B, C); }
+
+param_list_opt(A) ::= . { A = NULL; }
+param_list_opt(A) ::= param_list(A) .
+
+param_list(A) ::= IDENTIFIER(B) . {
+    A = new_list_node(new_param_node(B.s_val));
+}
+param_list(A) ::= param_list(B) COMMA IDENTIFIER(C) . {
+    A = B;
+    link_node(A->data.aggregate.value, new_param_node(C.s_val));
 }

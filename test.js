@@ -26,6 +26,16 @@ try {
     console.log('   Count (hex):', data.count);
     console.log('   Active:', data.active);
     console.log('   Tags:', data.tags);
+
+    // Test 3: stringify()
+    console.log('\nTest 3: Serializing object with stringify()...');
+    const xonText = xon.stringify({
+        app_name: 'NodeBinding',
+        features: ['parse', 'stringify'],
+        enabled: true
+    }, { indent: 2 });
+    console.log('✅ Stringified successfully!');
+    console.log(xonText);
     
     console.log('\n✅ All tests passed!');
 } catch (err) {

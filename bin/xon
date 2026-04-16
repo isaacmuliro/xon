@@ -1,0 +1,278 @@
+#!/usr/bin/env node
+"use strict";
+
+const fs = require("fs");
+const path = require("path");
+const BUILD_CONFIG_FILE = "xon.config.json";
+
+let native;
+try {
+  native = require("../build/Release/xon.node");
+} catch (err) {
+  console.error("Failed to load Xon native module. Run `npm install` first.");
+  console.error(err.message);
+  process.exit(1);
+}
+
+function printUsage(program) {
+  const name = path.basename(program || "xon");
+  console.error(
+    [
+      "Usage:",
+      `  ${name} <file.xon>`,
+      `  ${name} parse <file.xon>`,
+      `  ${name} validate <file.xon>`,
+      `  ${name} format <input.xon> [-o output.xon]`,
+      `  ${name} convert <input.(xon|json)> <output.(json|xon)>`,
+      `  ${name} eval <file.xon>`,
+      `  ${name} build [input] [output]`,
+      `      defaults: input=config/app.xon output=src/generated/app-config.json`,
+      `      directory mode: ${name} build config src/generated`,
+      `      config file: ${BUILD_CONFIG_FILE} -> { "build": { "input": "...", "output": "..." } }`,
+    ].join("\n")
+  );
+}
+
+function writeTextFile(filePath, content) {
+  const dir = path.dirname(filePath);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+  fs.writeFileSync(filePath, content, "utf8");
+}
+
+function ensureOutputExtension(outputPath) {
+  if (outputPath.endsWith(".json")) return "json";
+  if (outputPath.endsWith(".xon")) return "xon";
+  throw new Error(`Unsupported output extension: ${outputPath}`);
+}
+
+function cmdParse(inputPath) {
+  const parsed = native.xonify(inputPath);
+  console.log(`Parse successful: ${inputPath}`);
+  console.log(JSON.stringify(parsed, null, 2));
+}
+
+function cmdValidate(inputPath) {
+  native.xonify(inputPath);
+  console.log(`Valid Xon: ${inputPath}`);
+}
+
+function cmdFormat(inputPath, outputPath) {
+  const formatted = native.xonifyToXon(inputPath, true);
+  if (outputPath) {
+    writeTextFile(outputPath, formatted);
+    console.log(`Formatted Xon written to ${outputPath}`);
+    return;
+  }
+  process.stdout.write(formatted + "\n");
+}
+
+function cmdConvert(inputPath, outputPath) {
+  const format = ensureOutputExtension(outputPath);
+  const converted =
+    format === "json"
+      ? native.xonifyToJson(inputPath, true)
+      : native.xonifyToXon(inputPath, true);
+
+  writeTextFile(outputPath, converted);
+  console.log(`Converted ${inputPath} -> ${outputPath}`);
+}
+
+function cmdEval(inputPath) {
+  const evaluated = native.xonEvalToXon(inputPath, true);
+  process.stdout.write(evaluated + "\n");
+}
+
+function isDirectory(targetPath) {
+  try {
+    return fs.statSync(targetPath).isDirectory();
+  } catch (_) {
+    return false;
+  }
+}
+
+function collectXonFiles(inputDir) {
+  const out = [];
+  const stack = [inputDir];
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    const entries = fs.readdirSync(current, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(fullPath);
+        continue;
+      }
+      if (entry.isFile() && fullPath.toLowerCase().endsWith(".xon")) {
+        out.push(fullPath);
+      }
+    }
+  }
+
+  out.sort();
+  return out;
+}
+
+function toJsonPath(inputFile) {
+  if (inputFile.toLowerCase().endsWith(".xon")) {
+    return inputFile.slice(0, -4) + ".json";
+  }
+  return inputFile + ".json";
+}
+
+function convertOneToJson(inputPath, outputPath) {
+  const converted = native.xonifyToJson(inputPath, true);
+  writeTextFile(outputPath, converted);
+  console.log(`Built ${inputPath} -> ${outputPath}`);
+}
+
+function loadBuildConfig() {
+  const configPath = path.join(process.cwd(), BUILD_CONFIG_FILE);
+  let parsed;
+  let build;
+
+  if (!fs.existsSync(configPath)) {
+    return null;
+  }
+
+  try {
+    parsed = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  } catch (err) {
+    throw new Error(`Invalid ${BUILD_CONFIG_FILE}: ${err.message}`);
+  }
+
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(`Invalid ${BUILD_CONFIG_FILE}: top-level JSON object expected`);
+  }
+
+  build = parsed.build;
+  if (build == null) {
+    return null;
+  }
+  if (typeof build !== "object" || Array.isArray(build)) {
+    throw new Error(`Invalid ${BUILD_CONFIG_FILE}: "build" must be an object`);
+  }
+
+  if (build.input != null && typeof build.input !== "string") {
+    throw new Error(`Invalid ${BUILD_CONFIG_FILE}: "build.input" must be a string`);
+  }
+  if (build.output != null && typeof build.output !== "string") {
+    throw new Error(`Invalid ${BUILD_CONFIG_FILE}: "build.output" must be a string`);
+  }
+
+  return {
+    input: build.input || null,
+    output: build.output || null,
+    path: configPath,
+  };
+}
+
+function cmdBuild(inputArg, outputArg) {
+  const defaultInput = path.join("config", "app.xon");
+  const defaultOutput = path.join("src", "generated", "app-config.json");
+  const config = loadBuildConfig();
+  const usingBareDefaults = !inputArg && !outputArg && !config;
+  const inputPath = inputArg || (config && config.input) || defaultInput;
+  const outputPath = outputArg || (config && config.output) || (usingBareDefaults ? defaultOutput : null);
+
+  if (!fs.existsSync(inputPath)) {
+    throw new Error(
+      `Build input not found: ${inputPath}. ` +
+      `Create it, configure ${BUILD_CONFIG_FILE}, or pass explicit paths, for example: xon build config src/generated`
+    );
+  }
+
+  if (isDirectory(inputPath)) {
+    const outDir = outputPath || path.join("src", "generated");
+    const files = collectXonFiles(inputPath);
+    if (files.length === 0) {
+      throw new Error(`No .xon files found in directory: ${inputPath}`);
+    }
+    for (const file of files) {
+      const rel = path.relative(inputPath, file);
+      const outFile = path.join(outDir, rel).replace(/\.xon$/i, ".json");
+      convertOneToJson(file, outFile);
+    }
+    return;
+  }
+
+  convertOneToJson(inputPath, outputPath || toJsonPath(inputPath));
+}
+
+function main() {
+  const args = process.argv.slice(2);
+  const commands = new Set(["parse", "validate", "format", "convert", "eval", "build"]);
+
+  if (args.length === 1 && !commands.has(args[0])) {
+    cmdParse(args[0]);
+    return;
+  }
+
+  if (args.length < 1) {
+    printUsage(process.argv[1]);
+    process.exit(1);
+  }
+
+  const command = args[0];
+  try {
+    if (command === "parse") {
+      cmdParse(args[1]);
+      return;
+    }
+
+    if (command === "validate") {
+      cmdValidate(args[1]);
+      return;
+    }
+
+    if (command === "format") {
+      if (args.length === 2) {
+        cmdFormat(args[1], null);
+        return;
+      }
+      if (args.length === 4 && args[2] === "-o") {
+        cmdFormat(args[1], args[3]);
+        return;
+      }
+      printUsage(process.argv[1]);
+      process.exit(1);
+    }
+
+    if (command === "convert") {
+      if (args.length !== 3) {
+        printUsage(process.argv[1]);
+        process.exit(1);
+      }
+      cmdConvert(args[1], args[2]);
+      return;
+    }
+
+    if (command === "eval") {
+      if (args.length !== 2) {
+        printUsage(process.argv[1]);
+        process.exit(1);
+      }
+      cmdEval(args[1]);
+      return;
+    }
+
+    if (command === "build") {
+      if (args.length > 3) {
+        printUsage(process.argv[1]);
+        process.exit(1);
+      }
+      cmdBuild(args[1], args[2]);
+      return;
+    }
+
+    printUsage(process.argv[1]);
+    process.exit(1);
+  } catch (err) {
+    console.error(err.message || String(err));
+    process.exit(1);
+  }
+}
+
+main();

@@ -26,11 +26,119 @@
 ** input grammar file:
 */
 /************ Begin %include sections from the grammar ************************/
-#line 19 "src/xon.lemon"
+#line 46 "src/xon.lemon"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
+typedef struct XonExpr XonExpr;
+
+typedef enum {
+    XON_EXPR_IDENTIFIER,
+    XON_EXPR_BINARY,
+    XON_EXPR_UNARY,
+    XON_EXPR_CALL,
+    XON_EXPR_MEMBER,
+    XON_EXPR_TERNARY,
+    XON_EXPR_IF,
+    XON_EXPR_FUNCTION
+} XonExprKind;
+
+typedef enum {
+    XON_EXPR_OP_OR,
+    XON_EXPR_OP_AND,
+    XON_EXPR_OP_EQ,
+    XON_EXPR_OP_NEQ,
+    XON_EXPR_OP_LT,
+    XON_EXPR_OP_LTE,
+    XON_EXPR_OP_GT,
+    XON_EXPR_OP_GTE,
+    XON_EXPR_OP_ADD,
+    XON_EXPR_OP_SUB,
+    XON_EXPR_OP_MUL,
+    XON_EXPR_OP_DIV,
+    XON_EXPR_OP_MOD,
+    XON_EXPR_OP_NULLISH,
+    XON_EXPR_OP_NEG,
+    XON_EXPR_OP_NOT,
+    XON_EXPR_OP_UNARY_PLUS
+} XonExprOp;
+
+struct XonExpr {
+    XonExprKind kind;
+    int line;
+    union {
+        char* identifier_name;
+
+        struct {
+            XonExprOp op;
+            struct DataNode* left;
+            struct DataNode* right;
+        } binary;
+
+        struct {
+            XonExprOp op;
+            struct DataNode* operand;
+        } unary;
+
+        struct {
+            struct DataNode* callee;
+            struct DataNode* args;
+        } call;
+
+        struct {
+            struct DataNode* object;
+            char* member;
+        } member;
+
+        struct {
+            struct DataNode* cond;
+            struct DataNode* then_expr;
+            struct DataNode* else_expr;
+        } ternary;
+
+        struct {
+            struct DataNode* params;
+            struct DataNode* body;
+        } function;
+    } u;
+};
+
+typedef enum {
+    TYPE_OBJECT,
+    TYPE_LIST,
+    TYPE_STRING,
+    TYPE_NUMBER,
+    TYPE_BOOL,
+    TYPE_NULL,
+    TYPE_EXPR,
+    TYPE_DECL,
+    TYPE_FUNCTION
+} DataType;
+
+typedef struct DataNode {
+    DataType type;
+    struct DataNode* next;
+    union {
+        char* s_val;
+        double n_val;
+        int b_val;
+        struct {
+            struct DataNode* key;
+            struct DataNode* value;
+        } aggregate;
+
+        struct {
+            int is_const;
+            char* name;
+            struct DataNode* init_expr;
+        } declaration;
+
+        XonExpr* expr;
+        void* function_data;
+    } data;
+} DataNode;
 
 typedef struct Token {
     char* s_val;
@@ -38,30 +146,16 @@ typedef struct Token {
     int line;
 } Token;
 
-enum DataType {
-    TYPE_OBJECT,
-    TYPE_LIST,
-    TYPE_STRING,
-    TYPE_NUMBER,
-    TYPE_BOOL, // NEW
-    TYPE_NULL  // NEW
-};
+typedef void (*XonSyntaxErrorHandler)(int line, const char* token, void* user_data);
 
-typedef struct DataNode {
-    enum DataType type;
-    struct DataNode *next; // NEW: Moved outside union to allow linking any node type
-    union {
-        char *s_val;
-        double n_val;
-        int b_val; // NEW: For booleans (1 or 0)
-        struct {
-            struct DataNode *key;
-            struct DataNode *value;
-        } aggregate;
-    } data;
-} DataNode;
+typedef struct ParserState {
+    struct DataNode** result;
+    int had_error;
+    XonSyntaxErrorHandler on_syntax_error;
+    void* user_data;
+} ParserState;
 
-DataNode* new_node(enum DataType type) {
+DataNode* new_node(DataType type) {
     DataNode* n = (DataNode*)malloc(sizeof(DataNode));
     if (n) {
         memset(n, 0, sizeof(DataNode));
@@ -73,13 +167,140 @@ DataNode* new_node(enum DataType type) {
 DataNode* link_node(DataNode* head, DataNode* item) {
     if (!head) return item;
     DataNode* current = head;
-    while (current->next) { // NEW: Use the outer 'next' pointer
+    while (current->next) {
         current = current->next;
     }
     current->next = item;
     return head;
 }
-#line 83 "src/xon.c"
+
+static DataNode* new_pair_node(const char* key, DataNode* value) {
+    DataNode* node = new_node(TYPE_OBJECT);
+    if (!node) return NULL;
+    node->data.aggregate.key = new_node(TYPE_STRING);
+    if (!node->data.aggregate.key) {
+        free(node);
+        return NULL;
+    }
+    node->data.aggregate.key->data.s_val = (char*)key;
+    node->data.aggregate.value = value;
+    return node;
+}
+
+DataNode* new_list_node(DataNode* first_item) {
+    DataNode* list = new_node(TYPE_LIST);
+    if (!list) return NULL;
+    list->data.aggregate.value = first_item;
+    return list;
+}
+
+DataNode* new_expr_node(XonExpr* expr) {
+    DataNode* n = new_node(TYPE_EXPR);
+    if (!n) return NULL;
+    n->data.expr = expr;
+    return n;
+}
+
+XonExpr* xon_expr_identifier(const char* name, int line) {
+    XonExpr* expr = (XonExpr*)malloc(sizeof(XonExpr));
+    if (!expr) return NULL;
+    expr->kind = XON_EXPR_IDENTIFIER;
+    expr->line = line;
+    expr->u.identifier_name = (char*)name;
+    return expr;
+}
+
+XonExpr* xon_expr_binary(XonExprOp op, DataNode* left, DataNode* right, int line) {
+    XonExpr* expr = (XonExpr*)malloc(sizeof(XonExpr));
+    if (!expr) return NULL;
+    expr->kind = XON_EXPR_BINARY;
+    expr->line = line;
+    expr->u.binary.op = op;
+    expr->u.binary.left = left;
+    expr->u.binary.right = right;
+    return expr;
+}
+
+XonExpr* xon_expr_unary(XonExprOp op, DataNode* operand, int line) {
+    XonExpr* expr = (XonExpr*)malloc(sizeof(XonExpr));
+    if (!expr) return NULL;
+    expr->kind = XON_EXPR_UNARY;
+    expr->line = line;
+    expr->u.unary.op = op;
+    expr->u.unary.operand = operand;
+    return expr;
+}
+
+XonExpr* xon_expr_member(DataNode* object, const char* member, int line) {
+    XonExpr* expr = (XonExpr*)malloc(sizeof(XonExpr));
+    if (!expr) return NULL;
+    expr->kind = XON_EXPR_MEMBER;
+    expr->line = line;
+    expr->u.member.object = object;
+    expr->u.member.member = (char*)member;
+    return expr;
+}
+
+XonExpr* xon_expr_ternary(DataNode* cond, DataNode* then_expr, DataNode* else_expr, int line) {
+    XonExpr* expr = (XonExpr*)malloc(sizeof(XonExpr));
+    if (!expr) return NULL;
+    expr->kind = XON_EXPR_TERNARY;
+    expr->line = line;
+    expr->u.ternary.cond = cond;
+    expr->u.ternary.then_expr = then_expr;
+    expr->u.ternary.else_expr = else_expr;
+    return expr;
+}
+
+XonExpr* xon_expr_if(DataNode* cond, DataNode* then_expr, DataNode* else_expr, int line) {
+    XonExpr* expr = (XonExpr*)malloc(sizeof(XonExpr));
+    if (!expr) return NULL;
+    expr->kind = XON_EXPR_IF;
+    expr->line = line;
+    expr->u.ternary.cond = cond;
+    expr->u.ternary.then_expr = then_expr;
+    expr->u.ternary.else_expr = else_expr;
+    return expr;
+}
+
+XonExpr* xon_expr_call(DataNode* callee, DataNode* args, int line) {
+    XonExpr* expr = (XonExpr*)malloc(sizeof(XonExpr));
+    if (!expr) return NULL;
+    expr->kind = XON_EXPR_CALL;
+    expr->line = line;
+    expr->u.call.callee = callee;
+    expr->u.call.args = args;
+    return expr;
+}
+
+XonExpr* xon_expr_function(DataNode* params, DataNode* body, int line) {
+    XonExpr* expr = (XonExpr*)malloc(sizeof(XonExpr));
+    if (!expr) return NULL;
+    expr->kind = XON_EXPR_FUNCTION;
+    expr->line = line;
+    expr->u.function.params = params;
+    expr->u.function.body = body;
+    return expr;
+}
+
+DataNode* new_decl_node(int is_const, const char* name, DataNode* init_expr) {
+    DataNode* n = new_node(TYPE_DECL);
+    if (!n) return NULL;
+    n->data.declaration.is_const = is_const;
+    n->data.declaration.name = (char*)name;
+    n->data.declaration.init_expr = init_expr;
+    return n;
+}
+
+DataNode* new_param_node(const char* name) {
+    DataNode* node = new_node(TYPE_STRING);
+    if (!node) return NULL;
+    node->data.s_val = (char*)name;
+    return node;
+}
+
+ 
+#line 304 "src/xon.c"
 /**************** End of %include directives **********************************/
 /* These constants specify the various numeric values for terminal symbols.
 ***************** Begin token definitions *************************************/
@@ -90,12 +311,37 @@ DataNode* link_node(DataNode* head, DataNode* item) {
 #define STRING                          4
 #define COLON                           5
 #define IDENTIFIER                      6
-#define LBRACKET                        7
-#define RBRACKET                        8
-#define NUMBER                          9
-#define TRUE                           10
-#define FALSE                          11
-#define NULL_VAL                       12
+#define LET                             7
+#define ASSIGN                          8
+#define CONST                           9
+#define LBRACKET                       10
+#define RBRACKET                       11
+#define QUESTION                       12
+#define IF                             13
+#define LPAREN                         14
+#define RPAREN                         15
+#define ELSE                           16
+#define NULLCOALESCE                   17
+#define OR                             18
+#define AND                            19
+#define EQEQ                           20
+#define NOTEQ                          21
+#define LT                             22
+#define LTE                            23
+#define GT                             24
+#define GTE                            25
+#define PLUS                           26
+#define MINUS                          27
+#define STAR                           28
+#define SLASH                          29
+#define PERCENT                        30
+#define NOT                            31
+#define DOT                            32
+#define NUMBER                         33
+#define TRUE                           34
+#define FALSE                          35
+#define NULL_VAL                       36
+#define ARROW                          37
 #endif
 /**************** End token definitions ***************************************/
 
@@ -160,7 +406,7 @@ DataNode* link_node(DataNode* head, DataNode* item) {
 #endif
 /************* Begin control #defines *****************************************/
 #define YYCODETYPE unsigned char
-#define YYNOCODE 20
+#define YYNOCODE 60
 #define YYACTIONTYPE unsigned char
 #define xonParserTOKENTYPE Token
 typedef union {
@@ -171,11 +417,11 @@ typedef union {
 #ifndef YYSTACKDEPTH
 #define YYSTACKDEPTH 100
 #endif
-#define xonParserARG_SDECL  DataNode **pResult ;
-#define xonParserARG_PDECL , DataNode **pResult 
-#define xonParserARG_PARAM ,pResult 
-#define xonParserARG_FETCH  DataNode **pResult =yypParser->pResult ;
-#define xonParserARG_STORE yypParser->pResult =pResult ;
+#define xonParserARG_SDECL  ParserState *pState ;
+#define xonParserARG_PDECL , ParserState *pState 
+#define xonParserARG_PARAM ,pState 
+#define xonParserARG_FETCH  ParserState *pState =yypParser->pState ;
+#define xonParserARG_STORE yypParser->pState =pState ;
 #define YYREALLOC realloc
 #define YYFREE free
 #define YYDYNSTACK 0
@@ -184,18 +430,18 @@ typedef union {
 #define xonParserCTX_PARAM
 #define xonParserCTX_FETCH
 #define xonParserCTX_STORE
-#define YYNSTATE             13
-#define YYNRULE              21
-#define YYNRULE_WITH_ACTION  21
-#define YYNTOKEN             13
-#define YY_MAX_SHIFT         12
-#define YY_MIN_SHIFTREDUCE   32
-#define YY_MAX_SHIFTREDUCE   52
-#define YY_ERROR_ACTION      53
-#define YY_ACCEPT_ACTION     54
-#define YY_NO_ACTION         55
-#define YY_MIN_REDUCE        56
-#define YY_MAX_REDUCE        76
+#define YYNSTATE             77
+#define YYNRULE              66
+#define YYNRULE_WITH_ACTION  63
+#define YYNTOKEN             38
+#define YY_MAX_SHIFT         76
+#define YY_MIN_SHIFTREDUCE   117
+#define YY_MAX_SHIFTREDUCE   182
+#define YY_ERROR_ACTION      183
+#define YY_ACCEPT_ACTION     184
+#define YY_NO_ACTION         185
+#define YY_MIN_REDUCE        186
+#define YY_MAX_REDUCE        251
 #define YY_MIN_DSTRCTR       0
 #define YY_MAX_DSTRCTR       0
 /************* End control #defines *******************************************/
@@ -280,42 +526,175 @@ typedef union {
 **  yy_default[]       Default action for each state.
 **
 *********** Begin parsing tables **********************************************/
-#define YY_ACTTAB_COUNT (67)
+#define YY_ACTTAB_COUNT (641)
 static const YYACTIONTYPE yy_action[] = {
- /*     0 */     8,    5,   61,   62,   46,   34,    6,    1,   43,   47,
- /*    10 */    50,   51,   52,    5,    3,    4,   46,   57,   56,    1,
- /*    20 */    42,   47,   50,   51,   52,    5,    5,   55,   46,   55,
- /*    30 */    55,    1,    1,   47,   50,   51,   52,   72,   73,   55,
- /*    40 */     7,   55,   68,   72,   73,   54,   12,   11,   69,   72,
- /*    50 */    73,   72,   73,   36,   64,   10,   63,    9,   35,   55,
- /*    60 */    10,    2,    9,   55,   55,   55,   41,
+ /*     0 */   239,  192,  187,  240,    8,   64,   64,   73,   49,   66,
+ /*    10 */    45,   35,   41,   38,  225,   46,  232,    5,  239,   61,
+ /*    20 */    63,  240,   52,  244,  244,   73,   49,   66,   45,   35,
+ /*    30 */    41,   38,  225,   46,  232,   58,   59,  239,   26,   25,
+ /*    40 */   240,   50,  200,  200,   73,   49,   66,   45,   35,   41,
+ /*    50 */    38,  225,   46,  232,   33,   51,  191,  165,    6,  164,
+ /*    60 */    32,   28,   27,    3,  130,   33,   71,    1,  165,   54,
+ /*    70 */   164,    7,  184,   76,    3,  129,   75,   71,    1,   30,
+ /*    80 */    29,   20,   19,  162,   31,  161,  166,  167,  168,  169,
+ /*    90 */    30,   29,  179,   33,   60,   31,    9,  166,  167,  168,
+ /*   100 */   169,  121,    3,   74,  239,   56,   55,  240,   53,  201,
+ /*   110 */   201,   73,   49,   66,   45,   35,   41,   38,  225,   46,
+ /*   120 */   232,  120,   62,   74,  239,   56,   55,  240,   53,  196,
+ /*   130 */   196,   73,   49,   66,   45,   35,   41,   38,  225,   46,
+ /*   140 */   232,   16,   17,    2,  239,  119,   34,  240,  172,  195,
+ /*   150 */   195,   73,   49,   66,   45,   35,   41,   38,  225,   46,
+ /*   160 */   232,   57,  247,   18,  239,   17,   12,  240,   13,  194,
+ /*   170 */   194,   73,   49,   66,   45,   35,   41,   38,  225,   46,
+ /*   180 */   232,   10,   14,   15,  239,   11,  186,  240,  185,  245,
+ /*   190 */   245,   73,   49,   66,   45,   35,   41,   38,  225,   46,
+ /*   200 */   232,  185,  185,  185,  239,  185,  185,  240,  185,  242,
+ /*   210 */   242,   73,   49,   66,   45,   35,   41,   38,  225,   46,
+ /*   220 */   232,  185,  185,  185,  239,  185,  185,  240,  185,   70,
+ /*   230 */    70,   73,   49,   66,   45,   35,   41,   38,  225,   46,
+ /*   240 */   232,  185,  185,  185,  239,  185,  185,  240,  185,  193,
+ /*   250 */   193,   73,   49,   66,   45,   35,   41,   38,  225,   46,
+ /*   260 */   232,   33,  185,  185,  165,  185,   65,  185,    4,  185,
+ /*   270 */     3,  185,   33,   71,    1,  165,  128,  164,  185,  185,
+ /*   280 */   185,    3,  185,  185,   71,    1,   30,   29,  185,  185,
+ /*   290 */   185,   31,  185,  166,  167,  168,  169,   30,   29,  185,
+ /*   300 */   185,  185,   31,  185,  166,  167,  168,  169,   24,   23,
+ /*   310 */    22,   21,  239,  185,  185,  240,  185,  185,  203,   73,
+ /*   320 */    49,   66,   45,   35,   41,   38,  225,   46,  232,  185,
+ /*   330 */   185,  239,  185,  185,  240,  185,  185,   69,   73,   49,
+ /*   340 */    66,   45,   35,   41,   38,  225,   46,  232,  185,  185,
+ /*   350 */   185,  185,  239,  185,  185,  240,  185,  185,  202,   73,
+ /*   360 */    49,   66,   45,   35,   41,   38,  225,   46,  232,  185,
+ /*   370 */   185,  239,  185,  185,  240,  185,  185,   72,   73,   49,
+ /*   380 */    66,   45,   35,   41,   38,  225,   46,  232,   33,  185,
+ /*   390 */   185,  165,  185,  164,  185,  239,  185,    3,  240,  185,
+ /*   400 */   185,    1,  185,   68,   66,   45,   35,   41,   38,  225,
+ /*   410 */    46,  232,  185,   30,   29,  185,  185,  185,   31,  185,
+ /*   420 */   166,  167,  168,  169,  239,  185,  185,  240,  185,  185,
+ /*   430 */   185,  185,  185,   67,   45,   35,   41,   38,  225,   46,
+ /*   440 */   232,  239,  185,  185,  240,  185,  185,  239,  185,  185,
+ /*   450 */   240,   48,   35,   41,   38,  225,   46,  232,   36,   41,
+ /*   460 */    38,  225,   46,  232,  239,  185,  185,  240,  185,  185,
+ /*   470 */   185,  185,  185,  185,  185,   37,   41,   38,  225,   46,
+ /*   480 */   232,  239,  185,  185,  240,  185,  185,  239,  185,  185,
+ /*   490 */   240,  185,  185,   42,   38,  225,   46,  232,  185,   43,
+ /*   500 */    38,  225,   46,  232,  239,  185,  185,  240,  185,  185,
+ /*   510 */   185,  185,  185,  185,  185,  185,   44,   38,  225,   46,
+ /*   520 */   232,  239,  185,  185,  240,  185,  185,  239,  185,  185,
+ /*   530 */   240,  185,  185,   47,   38,  225,   46,  232,  185,  185,
+ /*   540 */    39,  225,   46,  232,  239,  185,  185,  240,  185,  185,
+ /*   550 */   185,  185,  185,  185,  185,  185,  185,   40,  225,   46,
+ /*   560 */   232,  239,  185,  185,  240,  185,  185,  239,  185,  185,
+ /*   570 */   240,  185,  185,  185,  185,  224,   46,  232,  185,  185,
+ /*   580 */   185,  223,   46,  232,  239,  185,  185,  240,  185,  185,
+ /*   590 */   185,  185,  185,  185,  185,  185,  185,  185,  228,   46,
+ /*   600 */   232,  239,  185,  185,  240,  185,  185,  239,  185,  185,
+ /*   610 */   240,  185,  185,  185,  185,  227,   46,  232,  185,  185,
+ /*   620 */   185,  226,   46,  232,  239,  185,  185,  240,  185,  185,
+ /*   630 */   185,  185,  185,  185,  185,  185,  185,  185,  222,   46,
+ /*   640 */   232,
 };
 static const YYCODETYPE yy_lookahead[] = {
- /*     0 */    16,    1,   18,   18,    4,    2,    3,    7,    8,    9,
- /*    10 */    10,   11,   12,    1,    5,    5,    4,    0,    0,    7,
- /*    20 */     8,    9,   10,   11,   12,    1,    1,   20,    4,   20,
- /*    30 */    20,    7,    7,    9,   10,   11,   12,   14,   15,   20,
- /*    40 */    17,   20,   19,   14,   15,   13,   14,   15,   19,   14,
- /*    50 */    15,   14,   15,    2,   19,    4,   19,    6,    2,   20,
- /*    60 */     4,    3,    6,   20,   20,   20,    8,   20,   20,   20,
- /*    70 */    20,   20,   20,   20,   20,   13,   13,   13,   13,   13,
+ /*     0 */    39,   41,    0,   42,    3,   44,   45,   46,   47,   48,
+ /*    10 */    49,   50,   51,   52,   53,   54,   55,    8,   39,   58,
+ /*    20 */    59,   42,    6,   44,   45,   46,   47,   48,   49,   50,
+ /*    30 */    51,   52,   53,   54,   55,   56,   57,   39,   26,   27,
+ /*    40 */    42,   43,   44,   45,   46,   47,   48,   49,   50,   51,
+ /*    50 */    52,   53,   54,   55,    1,   40,   41,    4,    8,    6,
+ /*    60 */    28,   29,   30,   10,   11,    1,   13,   14,    4,    6,
+ /*    70 */     6,    5,   38,   39,   10,   11,   42,   13,   14,   26,
+ /*    80 */    27,   20,   21,    6,   31,   15,   33,   34,   35,   36,
+ /*    90 */    26,   27,    6,    1,    3,   31,   37,   33,   34,   35,
+ /*   100 */    36,    2,   10,    4,   39,    6,    7,   42,    9,   44,
+ /*   110 */    45,   46,   47,   48,   49,   50,   51,   52,   53,   54,
+ /*   120 */    55,    2,   15,    4,   39,    6,    7,   42,    9,   44,
+ /*   130 */    45,   46,   47,   48,   49,   50,   51,   52,   53,   54,
+ /*   140 */    55,   17,   18,   14,   39,    2,    3,   42,   15,   44,
+ /*   150 */    45,   46,   47,   48,   49,   50,   51,   52,   53,   54,
+ /*   160 */    55,   32,    3,   19,   39,   18,   16,   42,   15,   44,
+ /*   170 */    45,   46,   47,   48,   49,   50,   51,   52,   53,   54,
+ /*   180 */    55,   14,    5,   12,   39,    5,    0,   42,   60,   44,
+ /*   190 */    45,   46,   47,   48,   49,   50,   51,   52,   53,   54,
+ /*   200 */    55,   60,   60,   60,   39,   60,   60,   42,   60,   44,
+ /*   210 */    45,   46,   47,   48,   49,   50,   51,   52,   53,   54,
+ /*   220 */    55,   60,   60,   60,   39,   60,   60,   42,   60,   44,
+ /*   230 */    45,   46,   47,   48,   49,   50,   51,   52,   53,   54,
+ /*   240 */    55,   60,   60,   60,   39,   60,   60,   42,   60,   44,
+ /*   250 */    45,   46,   47,   48,   49,   50,   51,   52,   53,   54,
+ /*   260 */    55,    1,   60,   60,    4,   60,    6,   60,    3,   60,
+ /*   270 */    10,   60,    1,   13,   14,    4,   11,    6,   60,   60,
+ /*   280 */    60,   10,   60,   60,   13,   14,   26,   27,   60,   60,
+ /*   290 */    60,   31,   60,   33,   34,   35,   36,   26,   27,   60,
+ /*   300 */    60,   60,   31,   60,   33,   34,   35,   36,   22,   23,
+ /*   310 */    24,   25,   39,   60,   60,   42,   60,   60,   45,   46,
+ /*   320 */    47,   48,   49,   50,   51,   52,   53,   54,   55,   60,
+ /*   330 */    60,   39,   60,   60,   42,   60,   60,   45,   46,   47,
+ /*   340 */    48,   49,   50,   51,   52,   53,   54,   55,   60,   60,
+ /*   350 */    60,   60,   39,   60,   60,   42,   60,   60,   45,   46,
+ /*   360 */    47,   48,   49,   50,   51,   52,   53,   54,   55,   60,
+ /*   370 */    60,   39,   60,   60,   42,   60,   60,   45,   46,   47,
+ /*   380 */    48,   49,   50,   51,   52,   53,   54,   55,    1,   60,
+ /*   390 */    60,    4,   60,    6,   60,   39,   60,   10,   42,   60,
+ /*   400 */    60,   14,   60,   47,   48,   49,   50,   51,   52,   53,
+ /*   410 */    54,   55,   60,   26,   27,   60,   60,   60,   31,   60,
+ /*   420 */    33,   34,   35,   36,   39,   60,   60,   42,   60,   60,
+ /*   430 */    60,   60,   60,   48,   49,   50,   51,   52,   53,   54,
+ /*   440 */    55,   39,   60,   60,   42,   60,   60,   39,   60,   60,
+ /*   450 */    42,   49,   50,   51,   52,   53,   54,   55,   50,   51,
+ /*   460 */    52,   53,   54,   55,   39,   60,   60,   42,   60,   60,
+ /*   470 */    60,   60,   60,   60,   60,   50,   51,   52,   53,   54,
+ /*   480 */    55,   39,   60,   60,   42,   60,   60,   39,   60,   60,
+ /*   490 */    42,   60,   60,   51,   52,   53,   54,   55,   60,   51,
+ /*   500 */    52,   53,   54,   55,   39,   60,   60,   42,   60,   60,
+ /*   510 */    60,   60,   60,   60,   60,   60,   51,   52,   53,   54,
+ /*   520 */    55,   39,   60,   60,   42,   60,   60,   39,   60,   60,
+ /*   530 */    42,   60,   60,   51,   52,   53,   54,   55,   60,   60,
+ /*   540 */    52,   53,   54,   55,   39,   60,   60,   42,   60,   60,
+ /*   550 */    60,   60,   60,   60,   60,   60,   60,   52,   53,   54,
+ /*   560 */    55,   39,   60,   60,   42,   60,   60,   39,   60,   60,
+ /*   570 */    42,   60,   60,   60,   60,   53,   54,   55,   60,   60,
+ /*   580 */    60,   53,   54,   55,   39,   60,   60,   42,   60,   60,
+ /*   590 */    60,   60,   60,   60,   60,   60,   60,   60,   53,   54,
+ /*   600 */    55,   39,   60,   60,   42,   60,   60,   39,   60,   60,
+ /*   610 */    42,   60,   60,   60,   60,   53,   54,   55,   60,   60,
+ /*   620 */    60,   53,   54,   55,   39,   60,   60,   42,   60,   60,
+ /*   630 */    60,   60,   60,   60,   60,   60,   60,   60,   53,   54,
+ /*   640 */    55,   38,   38,   38,   38,   38,   38,   38,   38,   38,
+ /*   650 */    38,   38,   38,   38,   38,   38,   38,   38,   38,   38,
+ /*   660 */    38,   38,   38,   38,   38,   38,   38,   38,   38,   38,
+ /*   670 */    38,   38,   38,   38,   38,   38,   38,   38,   38,
 };
-#define YY_SHIFT_COUNT    (12)
+#define YY_SHIFT_COUNT    (76)
 #define YY_SHIFT_MIN      (0)
-#define YY_SHIFT_MAX      (58)
-static const unsigned char yy_shift_ofst[] = {
- /*     0 */    25,    0,   12,   24,   24,   51,   56,   58,    3,    9,
- /*    10 */    10,   17,   18,
+#define YY_SHIFT_MAX      (387)
+static const unsigned short int yy_shift_ofst[] = {
+ /*     0 */    92,  260,  271,   53,   64,  271,  271,  271,  271,  271,
+ /*    10 */   271,  271,  271,  271,  271,  271,  387,  387,  387,  387,
+ /*    20 */   387,  387,  387,  387,  387,  387,  387,  387,  387,  387,
+ /*    30 */   387,  387,  387,   99,  119,  286,  286,  286,   32,   32,
+ /*    40 */    32,   12,   12,   12,   12,   61,  129,   12,   61,  124,
+ /*    50 */   265,  143,    9,   16,   50,   63,   66,   77,    1,   70,
+ /*    60 */    86,   91,   59,  107,  133,  159,  144,  144,  147,  150,
+ /*    70 */   153,  167,  177,  171,  180,    2,  186,
 };
-#define YY_REDUCE_COUNT (6)
-#define YY_REDUCE_MIN   (-16)
-#define YY_REDUCE_MAX   (37)
-static const signed char yy_reduce_ofst[] = {
- /*     0 */    32,   23,   29,   35,   37,  -16,  -15,
+#define YY_REDUCE_COUNT (34)
+#define YY_REDUCE_MIN   (-40)
+#define YY_REDUCE_MAX   (585)
+static const short yy_reduce_ofst[] = {
+ /*     0 */    34,  -39,  -21,   -2,   65,   85,  105,  125,  145,  165,
+ /*    10 */   185,  205,  273,  292,  313,  332,  356,  385,  402,  408,
+ /*    20 */   425,  442,  448,  465,  482,  488,  505,  522,  528,  545,
+ /*    30 */   562,  568,  585,   15,  -40,
 };
 static const YYACTIONTYPE yy_default[] = {
- /*     0 */    53,   53,   53,   53,   53,   53,   53,   53,   53,   53,
- /*    10 */    53,   53,   53,
+ /*     0 */   183,  246,  243,  183,  183,  183,  183,  183,  183,  183,
+ /*    10 */   183,  183,  183,  183,  183,  183,  183,  183,  183,  183,
+ /*    20 */   183,  183,  183,  183,  183,  183,  183,  183,  183,  183,
+ /*    30 */   183,  183,  183,  183,  183,  213,  212,  211,  221,  220,
+ /*    40 */   219,  218,  217,  216,  215,  210,  229,  214,  209,  205,
+ /*    50 */   183,  183,  183,  183,  183,  183,  183,  183,  250,  183,
+ /*    60 */   183,  251,  183,  183,  183,  233,  208,  207,  206,  183,
+ /*    70 */   183,  183,  183,  204,  183,  183,  183,
 };
 /********** End of lemon-generated parsing tables *****************************/
 
@@ -425,19 +804,59 @@ static const char *const yyTokenName[] = {
   /*    4 */ "STRING",
   /*    5 */ "COLON",
   /*    6 */ "IDENTIFIER",
-  /*    7 */ "LBRACKET",
-  /*    8 */ "RBRACKET",
-  /*    9 */ "NUMBER",
-  /*   10 */ "TRUE",
-  /*   11 */ "FALSE",
-  /*   12 */ "NULL_VAL",
-  /*   13 */ "root",
-  /*   14 */ "object",
-  /*   15 */ "list",
-  /*   16 */ "pair_list",
-  /*   17 */ "value_list",
-  /*   18 */ "pair",
-  /*   19 */ "value",
+  /*    7 */ "LET",
+  /*    8 */ "ASSIGN",
+  /*    9 */ "CONST",
+  /*   10 */ "LBRACKET",
+  /*   11 */ "RBRACKET",
+  /*   12 */ "QUESTION",
+  /*   13 */ "IF",
+  /*   14 */ "LPAREN",
+  /*   15 */ "RPAREN",
+  /*   16 */ "ELSE",
+  /*   17 */ "NULLCOALESCE",
+  /*   18 */ "OR",
+  /*   19 */ "AND",
+  /*   20 */ "EQEQ",
+  /*   21 */ "NOTEQ",
+  /*   22 */ "LT",
+  /*   23 */ "LTE",
+  /*   24 */ "GT",
+  /*   25 */ "GTE",
+  /*   26 */ "PLUS",
+  /*   27 */ "MINUS",
+  /*   28 */ "STAR",
+  /*   29 */ "SLASH",
+  /*   30 */ "PERCENT",
+  /*   31 */ "NOT",
+  /*   32 */ "DOT",
+  /*   33 */ "NUMBER",
+  /*   34 */ "TRUE",
+  /*   35 */ "FALSE",
+  /*   36 */ "NULL_VAL",
+  /*   37 */ "ARROW",
+  /*   38 */ "root",
+  /*   39 */ "object",
+  /*   40 */ "pair_list",
+  /*   41 */ "pair",
+  /*   42 */ "list",
+  /*   43 */ "value_list",
+  /*   44 */ "expr",
+  /*   45 */ "ternary_expr",
+  /*   46 */ "nullish_expr",
+  /*   47 */ "or_expr",
+  /*   48 */ "and_expr",
+  /*   49 */ "eq_expr",
+  /*   50 */ "rel_expr",
+  /*   51 */ "add_expr",
+  /*   52 */ "mul_expr",
+  /*   53 */ "unary_expr",
+  /*   54 */ "postfix_expr",
+  /*   55 */ "primary_expr",
+  /*   56 */ "arg_list",
+  /*   57 */ "arg_list_opt",
+  /*   58 */ "param_list",
+  /*   59 */ "param_list_opt",
 };
 #endif /* defined(YYCOVERAGE) || !defined(NDEBUG) */
 
@@ -452,20 +871,65 @@ static const char *const yyRuleName[] = {
  /*   4 */ "object ::= LBRACE RBRACE",
  /*   5 */ "pair_list ::= pair",
  /*   6 */ "pair_list ::= pair_list COMMA pair",
- /*   7 */ "pair ::= STRING COLON value",
- /*   8 */ "pair ::= IDENTIFIER COLON value",
- /*   9 */ "list ::= LBRACKET value_list RBRACKET",
- /*  10 */ "list ::= LBRACKET value_list COMMA RBRACKET",
- /*  11 */ "list ::= LBRACKET RBRACKET",
- /*  12 */ "value_list ::= value",
- /*  13 */ "value_list ::= value_list COMMA value",
- /*  14 */ "value ::= STRING",
- /*  15 */ "value ::= NUMBER",
- /*  16 */ "value ::= object",
- /*  17 */ "value ::= list",
- /*  18 */ "value ::= TRUE",
- /*  19 */ "value ::= FALSE",
- /*  20 */ "value ::= NULL_VAL",
+ /*   7 */ "pair ::= STRING COLON expr",
+ /*   8 */ "pair ::= IDENTIFIER COLON expr",
+ /*   9 */ "pair ::= LET IDENTIFIER ASSIGN expr",
+ /*  10 */ "pair ::= CONST IDENTIFIER ASSIGN expr",
+ /*  11 */ "list ::= LBRACKET value_list RBRACKET",
+ /*  12 */ "list ::= LBRACKET value_list COMMA RBRACKET",
+ /*  13 */ "list ::= LBRACKET RBRACKET",
+ /*  14 */ "value_list ::= expr",
+ /*  15 */ "value_list ::= value_list COMMA expr",
+ /*  16 */ "ternary_expr ::= nullish_expr QUESTION ternary_expr COLON ternary_expr",
+ /*  17 */ "ternary_expr ::= IF LPAREN expr RPAREN ternary_expr ELSE ternary_expr",
+ /*  18 */ "ternary_expr ::= nullish_expr",
+ /*  19 */ "nullish_expr ::= or_expr",
+ /*  20 */ "nullish_expr ::= or_expr NULLCOALESCE or_expr",
+ /*  21 */ "or_expr ::= or_expr OR and_expr",
+ /*  22 */ "or_expr ::= and_expr",
+ /*  23 */ "and_expr ::= and_expr AND eq_expr",
+ /*  24 */ "and_expr ::= eq_expr",
+ /*  25 */ "eq_expr ::= eq_expr EQEQ rel_expr",
+ /*  26 */ "eq_expr ::= eq_expr NOTEQ rel_expr",
+ /*  27 */ "eq_expr ::= rel_expr",
+ /*  28 */ "rel_expr ::= rel_expr LT add_expr",
+ /*  29 */ "rel_expr ::= rel_expr LTE add_expr",
+ /*  30 */ "rel_expr ::= rel_expr GT add_expr",
+ /*  31 */ "rel_expr ::= rel_expr GTE add_expr",
+ /*  32 */ "rel_expr ::= add_expr",
+ /*  33 */ "add_expr ::= add_expr PLUS mul_expr",
+ /*  34 */ "add_expr ::= add_expr MINUS mul_expr",
+ /*  35 */ "add_expr ::= mul_expr",
+ /*  36 */ "mul_expr ::= mul_expr STAR unary_expr",
+ /*  37 */ "mul_expr ::= mul_expr SLASH unary_expr",
+ /*  38 */ "mul_expr ::= mul_expr PERCENT unary_expr",
+ /*  39 */ "mul_expr ::= unary_expr",
+ /*  40 */ "unary_expr ::= NOT unary_expr",
+ /*  41 */ "unary_expr ::= PLUS unary_expr",
+ /*  42 */ "unary_expr ::= MINUS unary_expr",
+ /*  43 */ "unary_expr ::= postfix_expr",
+ /*  44 */ "postfix_expr ::= postfix_expr LPAREN arg_list_opt RPAREN",
+ /*  45 */ "postfix_expr ::= postfix_expr DOT IDENTIFIER",
+ /*  46 */ "postfix_expr ::= primary_expr",
+ /*  47 */ "primary_expr ::= IDENTIFIER",
+ /*  48 */ "primary_expr ::= STRING",
+ /*  49 */ "primary_expr ::= NUMBER",
+ /*  50 */ "primary_expr ::= TRUE",
+ /*  51 */ "primary_expr ::= FALSE",
+ /*  52 */ "primary_expr ::= NULL_VAL",
+ /*  53 */ "primary_expr ::= object",
+ /*  54 */ "primary_expr ::= list",
+ /*  55 */ "primary_expr ::= LPAREN expr RPAREN",
+ /*  56 */ "primary_expr ::= LPAREN param_list_opt RPAREN ARROW expr",
+ /*  57 */ "arg_list_opt ::=",
+ /*  58 */ "arg_list ::= expr",
+ /*  59 */ "arg_list ::= arg_list COMMA expr",
+ /*  60 */ "param_list_opt ::=",
+ /*  61 */ "param_list ::= IDENTIFIER",
+ /*  62 */ "param_list ::= param_list COMMA IDENTIFIER",
+ /*  63 */ "expr ::= ternary_expr",
+ /*  64 */ "arg_list_opt ::= arg_list",
+ /*  65 */ "param_list_opt ::= param_list",
 };
 #endif /* NDEBUG */
 
@@ -886,27 +1350,72 @@ static void yy_shift(
 /* For rule J, yyRuleInfoLhs[J] contains the symbol on the left-hand side
 ** of that rule */
 static const YYCODETYPE yyRuleInfoLhs[] = {
-    13,  /* (0) root ::= object */
-    13,  /* (1) root ::= list */
-    14,  /* (2) object ::= LBRACE pair_list RBRACE */
-    14,  /* (3) object ::= LBRACE pair_list COMMA RBRACE */
-    14,  /* (4) object ::= LBRACE RBRACE */
-    16,  /* (5) pair_list ::= pair */
-    16,  /* (6) pair_list ::= pair_list COMMA pair */
-    18,  /* (7) pair ::= STRING COLON value */
-    18,  /* (8) pair ::= IDENTIFIER COLON value */
-    15,  /* (9) list ::= LBRACKET value_list RBRACKET */
-    15,  /* (10) list ::= LBRACKET value_list COMMA RBRACKET */
-    15,  /* (11) list ::= LBRACKET RBRACKET */
-    17,  /* (12) value_list ::= value */
-    17,  /* (13) value_list ::= value_list COMMA value */
-    19,  /* (14) value ::= STRING */
-    19,  /* (15) value ::= NUMBER */
-    19,  /* (16) value ::= object */
-    19,  /* (17) value ::= list */
-    19,  /* (18) value ::= TRUE */
-    19,  /* (19) value ::= FALSE */
-    19,  /* (20) value ::= NULL_VAL */
+    38,  /* (0) root ::= object */
+    38,  /* (1) root ::= list */
+    39,  /* (2) object ::= LBRACE pair_list RBRACE */
+    39,  /* (3) object ::= LBRACE pair_list COMMA RBRACE */
+    39,  /* (4) object ::= LBRACE RBRACE */
+    40,  /* (5) pair_list ::= pair */
+    40,  /* (6) pair_list ::= pair_list COMMA pair */
+    41,  /* (7) pair ::= STRING COLON expr */
+    41,  /* (8) pair ::= IDENTIFIER COLON expr */
+    41,  /* (9) pair ::= LET IDENTIFIER ASSIGN expr */
+    41,  /* (10) pair ::= CONST IDENTIFIER ASSIGN expr */
+    42,  /* (11) list ::= LBRACKET value_list RBRACKET */
+    42,  /* (12) list ::= LBRACKET value_list COMMA RBRACKET */
+    42,  /* (13) list ::= LBRACKET RBRACKET */
+    43,  /* (14) value_list ::= expr */
+    43,  /* (15) value_list ::= value_list COMMA expr */
+    45,  /* (16) ternary_expr ::= nullish_expr QUESTION ternary_expr COLON ternary_expr */
+    45,  /* (17) ternary_expr ::= IF LPAREN expr RPAREN ternary_expr ELSE ternary_expr */
+    45,  /* (18) ternary_expr ::= nullish_expr */
+    46,  /* (19) nullish_expr ::= or_expr */
+    46,  /* (20) nullish_expr ::= or_expr NULLCOALESCE or_expr */
+    47,  /* (21) or_expr ::= or_expr OR and_expr */
+    47,  /* (22) or_expr ::= and_expr */
+    48,  /* (23) and_expr ::= and_expr AND eq_expr */
+    48,  /* (24) and_expr ::= eq_expr */
+    49,  /* (25) eq_expr ::= eq_expr EQEQ rel_expr */
+    49,  /* (26) eq_expr ::= eq_expr NOTEQ rel_expr */
+    49,  /* (27) eq_expr ::= rel_expr */
+    50,  /* (28) rel_expr ::= rel_expr LT add_expr */
+    50,  /* (29) rel_expr ::= rel_expr LTE add_expr */
+    50,  /* (30) rel_expr ::= rel_expr GT add_expr */
+    50,  /* (31) rel_expr ::= rel_expr GTE add_expr */
+    50,  /* (32) rel_expr ::= add_expr */
+    51,  /* (33) add_expr ::= add_expr PLUS mul_expr */
+    51,  /* (34) add_expr ::= add_expr MINUS mul_expr */
+    51,  /* (35) add_expr ::= mul_expr */
+    52,  /* (36) mul_expr ::= mul_expr STAR unary_expr */
+    52,  /* (37) mul_expr ::= mul_expr SLASH unary_expr */
+    52,  /* (38) mul_expr ::= mul_expr PERCENT unary_expr */
+    52,  /* (39) mul_expr ::= unary_expr */
+    53,  /* (40) unary_expr ::= NOT unary_expr */
+    53,  /* (41) unary_expr ::= PLUS unary_expr */
+    53,  /* (42) unary_expr ::= MINUS unary_expr */
+    53,  /* (43) unary_expr ::= postfix_expr */
+    54,  /* (44) postfix_expr ::= postfix_expr LPAREN arg_list_opt RPAREN */
+    54,  /* (45) postfix_expr ::= postfix_expr DOT IDENTIFIER */
+    54,  /* (46) postfix_expr ::= primary_expr */
+    55,  /* (47) primary_expr ::= IDENTIFIER */
+    55,  /* (48) primary_expr ::= STRING */
+    55,  /* (49) primary_expr ::= NUMBER */
+    55,  /* (50) primary_expr ::= TRUE */
+    55,  /* (51) primary_expr ::= FALSE */
+    55,  /* (52) primary_expr ::= NULL_VAL */
+    55,  /* (53) primary_expr ::= object */
+    55,  /* (54) primary_expr ::= list */
+    55,  /* (55) primary_expr ::= LPAREN expr RPAREN */
+    55,  /* (56) primary_expr ::= LPAREN param_list_opt RPAREN ARROW expr */
+    57,  /* (57) arg_list_opt ::= */
+    56,  /* (58) arg_list ::= expr */
+    56,  /* (59) arg_list ::= arg_list COMMA expr */
+    59,  /* (60) param_list_opt ::= */
+    58,  /* (61) param_list ::= IDENTIFIER */
+    58,  /* (62) param_list ::= param_list COMMA IDENTIFIER */
+    44,  /* (63) expr ::= ternary_expr */
+    57,  /* (64) arg_list_opt ::= arg_list */
+    59,  /* (65) param_list_opt ::= param_list */
 };
 
 /* For rule J, yyRuleInfoNRhs[J] contains the negative of the number
@@ -919,20 +1428,65 @@ static const signed char yyRuleInfoNRhs[] = {
    -2,  /* (4) object ::= LBRACE RBRACE */
    -1,  /* (5) pair_list ::= pair */
    -3,  /* (6) pair_list ::= pair_list COMMA pair */
-   -3,  /* (7) pair ::= STRING COLON value */
-   -3,  /* (8) pair ::= IDENTIFIER COLON value */
-   -3,  /* (9) list ::= LBRACKET value_list RBRACKET */
-   -4,  /* (10) list ::= LBRACKET value_list COMMA RBRACKET */
-   -2,  /* (11) list ::= LBRACKET RBRACKET */
-   -1,  /* (12) value_list ::= value */
-   -3,  /* (13) value_list ::= value_list COMMA value */
-   -1,  /* (14) value ::= STRING */
-   -1,  /* (15) value ::= NUMBER */
-   -1,  /* (16) value ::= object */
-   -1,  /* (17) value ::= list */
-   -1,  /* (18) value ::= TRUE */
-   -1,  /* (19) value ::= FALSE */
-   -1,  /* (20) value ::= NULL_VAL */
+   -3,  /* (7) pair ::= STRING COLON expr */
+   -3,  /* (8) pair ::= IDENTIFIER COLON expr */
+   -4,  /* (9) pair ::= LET IDENTIFIER ASSIGN expr */
+   -4,  /* (10) pair ::= CONST IDENTIFIER ASSIGN expr */
+   -3,  /* (11) list ::= LBRACKET value_list RBRACKET */
+   -4,  /* (12) list ::= LBRACKET value_list COMMA RBRACKET */
+   -2,  /* (13) list ::= LBRACKET RBRACKET */
+   -1,  /* (14) value_list ::= expr */
+   -3,  /* (15) value_list ::= value_list COMMA expr */
+   -5,  /* (16) ternary_expr ::= nullish_expr QUESTION ternary_expr COLON ternary_expr */
+   -7,  /* (17) ternary_expr ::= IF LPAREN expr RPAREN ternary_expr ELSE ternary_expr */
+   -1,  /* (18) ternary_expr ::= nullish_expr */
+   -1,  /* (19) nullish_expr ::= or_expr */
+   -3,  /* (20) nullish_expr ::= or_expr NULLCOALESCE or_expr */
+   -3,  /* (21) or_expr ::= or_expr OR and_expr */
+   -1,  /* (22) or_expr ::= and_expr */
+   -3,  /* (23) and_expr ::= and_expr AND eq_expr */
+   -1,  /* (24) and_expr ::= eq_expr */
+   -3,  /* (25) eq_expr ::= eq_expr EQEQ rel_expr */
+   -3,  /* (26) eq_expr ::= eq_expr NOTEQ rel_expr */
+   -1,  /* (27) eq_expr ::= rel_expr */
+   -3,  /* (28) rel_expr ::= rel_expr LT add_expr */
+   -3,  /* (29) rel_expr ::= rel_expr LTE add_expr */
+   -3,  /* (30) rel_expr ::= rel_expr GT add_expr */
+   -3,  /* (31) rel_expr ::= rel_expr GTE add_expr */
+   -1,  /* (32) rel_expr ::= add_expr */
+   -3,  /* (33) add_expr ::= add_expr PLUS mul_expr */
+   -3,  /* (34) add_expr ::= add_expr MINUS mul_expr */
+   -1,  /* (35) add_expr ::= mul_expr */
+   -3,  /* (36) mul_expr ::= mul_expr STAR unary_expr */
+   -3,  /* (37) mul_expr ::= mul_expr SLASH unary_expr */
+   -3,  /* (38) mul_expr ::= mul_expr PERCENT unary_expr */
+   -1,  /* (39) mul_expr ::= unary_expr */
+   -2,  /* (40) unary_expr ::= NOT unary_expr */
+   -2,  /* (41) unary_expr ::= PLUS unary_expr */
+   -2,  /* (42) unary_expr ::= MINUS unary_expr */
+   -1,  /* (43) unary_expr ::= postfix_expr */
+   -4,  /* (44) postfix_expr ::= postfix_expr LPAREN arg_list_opt RPAREN */
+   -3,  /* (45) postfix_expr ::= postfix_expr DOT IDENTIFIER */
+   -1,  /* (46) postfix_expr ::= primary_expr */
+   -1,  /* (47) primary_expr ::= IDENTIFIER */
+   -1,  /* (48) primary_expr ::= STRING */
+   -1,  /* (49) primary_expr ::= NUMBER */
+   -1,  /* (50) primary_expr ::= TRUE */
+   -1,  /* (51) primary_expr ::= FALSE */
+   -1,  /* (52) primary_expr ::= NULL_VAL */
+   -1,  /* (53) primary_expr ::= object */
+   -1,  /* (54) primary_expr ::= list */
+   -3,  /* (55) primary_expr ::= LPAREN expr RPAREN */
+   -5,  /* (56) primary_expr ::= LPAREN param_list_opt RPAREN ARROW expr */
+    0,  /* (57) arg_list_opt ::= */
+   -1,  /* (58) arg_list ::= expr */
+   -3,  /* (59) arg_list ::= arg_list COMMA expr */
+    0,  /* (60) param_list_opt ::= */
+   -1,  /* (61) param_list ::= IDENTIFIER */
+   -3,  /* (62) param_list ::= param_list COMMA IDENTIFIER */
+   -1,  /* (63) expr ::= ternary_expr */
+   -1,  /* (64) arg_list_opt ::= arg_list */
+   -1,  /* (65) param_list_opt ::= param_list */
 };
 
 static void yy_accept(yyParser*);  /* Forward Declaration */
@@ -976,134 +1530,361 @@ static YYACTIONTYPE yy_reduce(
         YYMINORTYPE yylhsminor;
       case 0: /* root ::= object */
       case 1: /* root ::= list */ yytestcase(yyruleno==1);
-#line 75 "src/xon.lemon"
-{ *pResult = yymsp[0].minor.yy19; }
-#line 981 "src/xon.c"
+#line 323 "src/xon.lemon"
+{ *pState->result = yymsp[0].minor.yy19; }
+#line 1535 "src/xon.c"
         break;
       case 2: /* object ::= LBRACE pair_list RBRACE */
-#line 79 "src/xon.lemon"
+      case 55: /* primary_expr ::= LPAREN expr RPAREN */ yytestcase(yyruleno==55);
+#line 327 "src/xon.lemon"
 { yymsp[-2].minor.yy19 = yymsp[-1].minor.yy19; }
-#line 986 "src/xon.c"
+#line 1541 "src/xon.c"
         break;
       case 3: /* object ::= LBRACE pair_list COMMA RBRACE */
-#line 80 "src/xon.lemon"
+#line 328 "src/xon.lemon"
 { yymsp[-3].minor.yy19 = yymsp[-2].minor.yy19; }
-#line 991 "src/xon.c"
+#line 1546 "src/xon.c"
         break;
       case 4: /* object ::= LBRACE RBRACE */
-#line 81 "src/xon.lemon"
+#line 329 "src/xon.lemon"
 { yymsp[-1].minor.yy19 = new_node(TYPE_OBJECT); }
-#line 996 "src/xon.c"
+#line 1551 "src/xon.c"
         break;
       case 5: /* pair_list ::= pair */
-#line 83 "src/xon.lemon"
+#line 331 "src/xon.lemon"
 {
     yylhsminor.yy19 = new_node(TYPE_OBJECT);
     if (yylhsminor.yy19) yylhsminor.yy19->data.aggregate.value = yymsp[0].minor.yy19;
 }
-#line 1004 "src/xon.c"
+#line 1559 "src/xon.c"
   yymsp[0].minor.yy19 = yylhsminor.yy19;
         break;
       case 6: /* pair_list ::= pair_list COMMA pair */
-#line 87 "src/xon.lemon"
+#line 335 "src/xon.lemon"
 {
     yylhsminor.yy19 = yymsp[-2].minor.yy19;
     link_node(yylhsminor.yy19->data.aggregate.value, yymsp[0].minor.yy19);
 }
-#line 1013 "src/xon.c"
+#line 1568 "src/xon.c"
   yymsp[-2].minor.yy19 = yylhsminor.yy19;
         break;
-      case 7: /* pair ::= STRING COLON value */
-      case 8: /* pair ::= IDENTIFIER COLON value */ yytestcase(yyruleno==8);
-#line 92 "src/xon.lemon"
+      case 7: /* pair ::= STRING COLON expr */
+      case 8: /* pair ::= IDENTIFIER COLON expr */ yytestcase(yyruleno==8);
+#line 340 "src/xon.lemon"
 {
-    yylhsminor.yy19 = new_node(TYPE_OBJECT);
-    if (yylhsminor.yy19) {
-        yylhsminor.yy19->data.aggregate.key = new_node(TYPE_STRING);
-        yylhsminor.yy19->data.aggregate.key->data.s_val = yymsp[-2].minor.yy0.s_val;
-        yylhsminor.yy19->data.aggregate.value = yymsp[0].minor.yy19;
-    }
+    yylhsminor.yy19 = new_pair_node(yymsp[-2].minor.yy0.s_val, yymsp[0].minor.yy19);
 }
-#line 1027 "src/xon.c"
+#line 1577 "src/xon.c"
   yymsp[-2].minor.yy19 = yylhsminor.yy19;
         break;
-      case 9: /* list ::= LBRACKET value_list RBRACKET */
-#line 112 "src/xon.lemon"
+      case 9: /* pair ::= LET IDENTIFIER ASSIGN expr */
+#line 346 "src/xon.lemon"
+{
+    yymsp[-3].minor.yy19 = new_decl_node(0, yymsp[-2].minor.yy0.s_val, yymsp[0].minor.yy19);
+}
+#line 1585 "src/xon.c"
+        break;
+      case 10: /* pair ::= CONST IDENTIFIER ASSIGN expr */
+#line 349 "src/xon.lemon"
+{
+    yymsp[-3].minor.yy19 = new_decl_node(1, yymsp[-2].minor.yy0.s_val, yymsp[0].minor.yy19);
+}
+#line 1592 "src/xon.c"
+        break;
+      case 11: /* list ::= LBRACKET value_list RBRACKET */
+#line 354 "src/xon.lemon"
 {
     yymsp[-2].minor.yy19 = new_node(TYPE_LIST);
     if (yymsp[-2].minor.yy19) yymsp[-2].minor.yy19->data.aggregate.value = yymsp[-1].minor.yy19;
 }
-#line 1036 "src/xon.c"
+#line 1600 "src/xon.c"
         break;
-      case 10: /* list ::= LBRACKET value_list COMMA RBRACKET */
-#line 116 "src/xon.lemon"
-{ // NEW: Trailing comma support
+      case 12: /* list ::= LBRACKET value_list COMMA RBRACKET */
+#line 358 "src/xon.lemon"
+{
     yymsp[-3].minor.yy19 = new_node(TYPE_LIST);
     if (yymsp[-3].minor.yy19) yymsp[-3].minor.yy19->data.aggregate.value = yymsp[-2].minor.yy19;
 }
-#line 1044 "src/xon.c"
+#line 1608 "src/xon.c"
         break;
-      case 11: /* list ::= LBRACKET RBRACKET */
-#line 120 "src/xon.lemon"
+      case 13: /* list ::= LBRACKET RBRACKET */
+#line 362 "src/xon.lemon"
 { yymsp[-1].minor.yy19 = new_node(TYPE_LIST); }
-#line 1049 "src/xon.c"
+#line 1613 "src/xon.c"
         break;
-      case 12: /* value_list ::= value */
-      case 16: /* value ::= object */ yytestcase(yyruleno==16);
-      case 17: /* value ::= list */ yytestcase(yyruleno==17);
-#line 122 "src/xon.lemon"
+      case 14: /* value_list ::= expr */
+      case 18: /* ternary_expr ::= nullish_expr */ yytestcase(yyruleno==18);
+      case 19: /* nullish_expr ::= or_expr */ yytestcase(yyruleno==19);
+      case 22: /* or_expr ::= and_expr */ yytestcase(yyruleno==22);
+      case 24: /* and_expr ::= eq_expr */ yytestcase(yyruleno==24);
+      case 27: /* eq_expr ::= rel_expr */ yytestcase(yyruleno==27);
+      case 32: /* rel_expr ::= add_expr */ yytestcase(yyruleno==32);
+      case 35: /* add_expr ::= mul_expr */ yytestcase(yyruleno==35);
+      case 39: /* mul_expr ::= unary_expr */ yytestcase(yyruleno==39);
+      case 43: /* unary_expr ::= postfix_expr */ yytestcase(yyruleno==43);
+      case 46: /* postfix_expr ::= primary_expr */ yytestcase(yyruleno==46);
+      case 53: /* primary_expr ::= object */ yytestcase(yyruleno==53);
+      case 54: /* primary_expr ::= list */ yytestcase(yyruleno==54);
+      case 58: /* arg_list ::= expr */ yytestcase(yyruleno==58);
+#line 364 "src/xon.lemon"
 { yylhsminor.yy19 = yymsp[0].minor.yy19; }
-#line 1056 "src/xon.c"
+#line 1631 "src/xon.c"
   yymsp[0].minor.yy19 = yylhsminor.yy19;
         break;
-      case 13: /* value_list ::= value_list COMMA value */
-#line 123 "src/xon.lemon"
+      case 15: /* value_list ::= value_list COMMA expr */
+      case 59: /* arg_list ::= arg_list COMMA expr */ yytestcase(yyruleno==59);
+#line 365 "src/xon.lemon"
 { yylhsminor.yy19 = link_node(yymsp[-2].minor.yy19, yymsp[0].minor.yy19); }
-#line 1062 "src/xon.c"
+#line 1638 "src/xon.c"
   yymsp[-2].minor.yy19 = yylhsminor.yy19;
         break;
-      case 14: /* value ::= STRING */
-#line 126 "src/xon.lemon"
+      case 16: /* ternary_expr ::= nullish_expr QUESTION ternary_expr COLON ternary_expr */
+#line 370 "src/xon.lemon"
+{
+    yylhsminor.yy19 = new_expr_node(xon_expr_ternary(yymsp[-4].minor.yy19, yymsp[-2].minor.yy19, yymsp[0].minor.yy19, yymsp[-4].minor.yy19 ? 0 : 0));
+}
+#line 1646 "src/xon.c"
+  yymsp[-4].minor.yy19 = yylhsminor.yy19;
+        break;
+      case 17: /* ternary_expr ::= IF LPAREN expr RPAREN ternary_expr ELSE ternary_expr */
+#line 373 "src/xon.lemon"
+{
+    yymsp[-6].minor.yy19 = new_expr_node(xon_expr_if(yymsp[-4].minor.yy19, yymsp[-2].minor.yy19, yymsp[0].minor.yy19, yymsp[-4].minor.yy19 ? 0 : 0));
+}
+#line 1654 "src/xon.c"
+        break;
+      case 20: /* nullish_expr ::= or_expr NULLCOALESCE or_expr */
+#line 379 "src/xon.lemon"
+{
+    yylhsminor.yy19 = new_expr_node(xon_expr_binary(XON_EXPR_OP_NULLISH, yymsp[-2].minor.yy19, yymsp[0].minor.yy19, 0));
+}
+#line 1661 "src/xon.c"
+  yymsp[-2].minor.yy19 = yylhsminor.yy19;
+        break;
+      case 21: /* or_expr ::= or_expr OR and_expr */
+#line 383 "src/xon.lemon"
+{
+    yylhsminor.yy19 = new_expr_node(xon_expr_binary(XON_EXPR_OP_OR, yymsp[-2].minor.yy19, yymsp[0].minor.yy19, 0));
+}
+#line 1669 "src/xon.c"
+  yymsp[-2].minor.yy19 = yylhsminor.yy19;
+        break;
+      case 23: /* and_expr ::= and_expr AND eq_expr */
+#line 388 "src/xon.lemon"
+{
+    yylhsminor.yy19 = new_expr_node(xon_expr_binary(XON_EXPR_OP_AND, yymsp[-2].minor.yy19, yymsp[0].minor.yy19, 0));
+}
+#line 1677 "src/xon.c"
+  yymsp[-2].minor.yy19 = yylhsminor.yy19;
+        break;
+      case 25: /* eq_expr ::= eq_expr EQEQ rel_expr */
+#line 393 "src/xon.lemon"
+{
+    yylhsminor.yy19 = new_expr_node(xon_expr_binary(XON_EXPR_OP_EQ, yymsp[-2].minor.yy19, yymsp[0].minor.yy19, 0));
+}
+#line 1685 "src/xon.c"
+  yymsp[-2].minor.yy19 = yylhsminor.yy19;
+        break;
+      case 26: /* eq_expr ::= eq_expr NOTEQ rel_expr */
+#line 396 "src/xon.lemon"
+{
+    yylhsminor.yy19 = new_expr_node(xon_expr_binary(XON_EXPR_OP_NEQ, yymsp[-2].minor.yy19, yymsp[0].minor.yy19, 0));
+}
+#line 1693 "src/xon.c"
+  yymsp[-2].minor.yy19 = yylhsminor.yy19;
+        break;
+      case 28: /* rel_expr ::= rel_expr LT add_expr */
+#line 401 "src/xon.lemon"
+{
+    yylhsminor.yy19 = new_expr_node(xon_expr_binary(XON_EXPR_OP_LT, yymsp[-2].minor.yy19, yymsp[0].minor.yy19, 0));
+}
+#line 1701 "src/xon.c"
+  yymsp[-2].minor.yy19 = yylhsminor.yy19;
+        break;
+      case 29: /* rel_expr ::= rel_expr LTE add_expr */
+#line 404 "src/xon.lemon"
+{
+    yylhsminor.yy19 = new_expr_node(xon_expr_binary(XON_EXPR_OP_LTE, yymsp[-2].minor.yy19, yymsp[0].minor.yy19, 0));
+}
+#line 1709 "src/xon.c"
+  yymsp[-2].minor.yy19 = yylhsminor.yy19;
+        break;
+      case 30: /* rel_expr ::= rel_expr GT add_expr */
+#line 407 "src/xon.lemon"
+{
+    yylhsminor.yy19 = new_expr_node(xon_expr_binary(XON_EXPR_OP_GT, yymsp[-2].minor.yy19, yymsp[0].minor.yy19, 0));
+}
+#line 1717 "src/xon.c"
+  yymsp[-2].minor.yy19 = yylhsminor.yy19;
+        break;
+      case 31: /* rel_expr ::= rel_expr GTE add_expr */
+#line 410 "src/xon.lemon"
+{
+    yylhsminor.yy19 = new_expr_node(xon_expr_binary(XON_EXPR_OP_GTE, yymsp[-2].minor.yy19, yymsp[0].minor.yy19, 0));
+}
+#line 1725 "src/xon.c"
+  yymsp[-2].minor.yy19 = yylhsminor.yy19;
+        break;
+      case 33: /* add_expr ::= add_expr PLUS mul_expr */
+#line 415 "src/xon.lemon"
+{
+    yylhsminor.yy19 = new_expr_node(xon_expr_binary(XON_EXPR_OP_ADD, yymsp[-2].minor.yy19, yymsp[0].minor.yy19, 0));
+}
+#line 1733 "src/xon.c"
+  yymsp[-2].minor.yy19 = yylhsminor.yy19;
+        break;
+      case 34: /* add_expr ::= add_expr MINUS mul_expr */
+#line 418 "src/xon.lemon"
+{
+    yylhsminor.yy19 = new_expr_node(xon_expr_binary(XON_EXPR_OP_SUB, yymsp[-2].minor.yy19, yymsp[0].minor.yy19, 0));
+}
+#line 1741 "src/xon.c"
+  yymsp[-2].minor.yy19 = yylhsminor.yy19;
+        break;
+      case 36: /* mul_expr ::= mul_expr STAR unary_expr */
+#line 423 "src/xon.lemon"
+{
+    yylhsminor.yy19 = new_expr_node(xon_expr_binary(XON_EXPR_OP_MUL, yymsp[-2].minor.yy19, yymsp[0].minor.yy19, 0));
+}
+#line 1749 "src/xon.c"
+  yymsp[-2].minor.yy19 = yylhsminor.yy19;
+        break;
+      case 37: /* mul_expr ::= mul_expr SLASH unary_expr */
+#line 426 "src/xon.lemon"
+{
+    yylhsminor.yy19 = new_expr_node(xon_expr_binary(XON_EXPR_OP_DIV, yymsp[-2].minor.yy19, yymsp[0].minor.yy19, 0));
+}
+#line 1757 "src/xon.c"
+  yymsp[-2].minor.yy19 = yylhsminor.yy19;
+        break;
+      case 38: /* mul_expr ::= mul_expr PERCENT unary_expr */
+#line 429 "src/xon.lemon"
+{
+    yylhsminor.yy19 = new_expr_node(xon_expr_binary(XON_EXPR_OP_MOD, yymsp[-2].minor.yy19, yymsp[0].minor.yy19, 0));
+}
+#line 1765 "src/xon.c"
+  yymsp[-2].minor.yy19 = yylhsminor.yy19;
+        break;
+      case 40: /* unary_expr ::= NOT unary_expr */
+#line 434 "src/xon.lemon"
+{
+    yymsp[-1].minor.yy19 = new_expr_node(xon_expr_unary(XON_EXPR_OP_NOT, yymsp[0].minor.yy19, 0));
+}
+#line 1773 "src/xon.c"
+        break;
+      case 41: /* unary_expr ::= PLUS unary_expr */
+#line 437 "src/xon.lemon"
+{
+    yymsp[-1].minor.yy19 = new_expr_node(xon_expr_unary(XON_EXPR_OP_UNARY_PLUS, yymsp[0].minor.yy19, 0));
+}
+#line 1780 "src/xon.c"
+        break;
+      case 42: /* unary_expr ::= MINUS unary_expr */
+#line 440 "src/xon.lemon"
+{
+    yymsp[-1].minor.yy19 = new_expr_node(xon_expr_unary(XON_EXPR_OP_NEG, yymsp[0].minor.yy19, 0));
+}
+#line 1787 "src/xon.c"
+        break;
+      case 44: /* postfix_expr ::= postfix_expr LPAREN arg_list_opt RPAREN */
+#line 445 "src/xon.lemon"
+{
+    yylhsminor.yy19 = new_expr_node(xon_expr_call(yymsp[-3].minor.yy19, yymsp[-1].minor.yy19, 0));
+}
+#line 1794 "src/xon.c"
+  yymsp[-3].minor.yy19 = yylhsminor.yy19;
+        break;
+      case 45: /* postfix_expr ::= postfix_expr DOT IDENTIFIER */
+#line 448 "src/xon.lemon"
+{
+    yylhsminor.yy19 = new_expr_node(xon_expr_member(yymsp[-2].minor.yy19, yymsp[0].minor.yy0.s_val, 0));
+}
+#line 1802 "src/xon.c"
+  yymsp[-2].minor.yy19 = yylhsminor.yy19;
+        break;
+      case 47: /* primary_expr ::= IDENTIFIER */
+#line 453 "src/xon.lemon"
+{
+    yylhsminor.yy19 = new_expr_node(xon_expr_identifier(yymsp[0].minor.yy0.s_val, yymsp[0].minor.yy0.line));
+}
+#line 1810 "src/xon.c"
+  yymsp[0].minor.yy19 = yylhsminor.yy19;
+        break;
+      case 48: /* primary_expr ::= STRING */
+#line 456 "src/xon.lemon"
 {
     yylhsminor.yy19 = new_node(TYPE_STRING);
     if (yylhsminor.yy19) yylhsminor.yy19->data.s_val = yymsp[0].minor.yy0.s_val;
 }
-#line 1071 "src/xon.c"
+#line 1819 "src/xon.c"
   yymsp[0].minor.yy19 = yylhsminor.yy19;
         break;
-      case 15: /* value ::= NUMBER */
-#line 130 "src/xon.lemon"
+      case 49: /* primary_expr ::= NUMBER */
+#line 460 "src/xon.lemon"
 {
     yylhsminor.yy19 = new_node(TYPE_NUMBER);
     if (yylhsminor.yy19) yylhsminor.yy19->data.n_val = yymsp[0].minor.yy0.n_val;
 }
-#line 1080 "src/xon.c"
+#line 1828 "src/xon.c"
   yymsp[0].minor.yy19 = yylhsminor.yy19;
         break;
-      case 18: /* value ::= TRUE */
-#line 138 "src/xon.lemon"
+      case 50: /* primary_expr ::= TRUE */
+#line 464 "src/xon.lemon"
 {
     yymsp[0].minor.yy19 = new_node(TYPE_BOOL);
     if (yymsp[0].minor.yy19) yymsp[0].minor.yy19->data.b_val = 1;
 }
-#line 1089 "src/xon.c"
+#line 1837 "src/xon.c"
         break;
-      case 19: /* value ::= FALSE */
-#line 142 "src/xon.lemon"
+      case 51: /* primary_expr ::= FALSE */
+#line 468 "src/xon.lemon"
 {
     yymsp[0].minor.yy19 = new_node(TYPE_BOOL);
     if (yymsp[0].minor.yy19) yymsp[0].minor.yy19->data.b_val = 0;
 }
-#line 1097 "src/xon.c"
+#line 1845 "src/xon.c"
         break;
-      case 20: /* value ::= NULL_VAL */
-#line 146 "src/xon.lemon"
+      case 52: /* primary_expr ::= NULL_VAL */
+#line 472 "src/xon.lemon"
 {
     yymsp[0].minor.yy19 = new_node(TYPE_NULL);
 }
-#line 1104 "src/xon.c"
+#line 1852 "src/xon.c"
+        break;
+      case 56: /* primary_expr ::= LPAREN param_list_opt RPAREN ARROW expr */
+#line 478 "src/xon.lemon"
+{
+    yymsp[-4].minor.yy19 = new_expr_node(xon_expr_function(yymsp[-3].minor.yy19, yymsp[0].minor.yy19, 0));
+}
+#line 1859 "src/xon.c"
+        break;
+      case 57: /* arg_list_opt ::= */
+      case 60: /* param_list_opt ::= */ yytestcase(yyruleno==60);
+#line 482 "src/xon.lemon"
+{ yymsp[1].minor.yy19 = NULL; }
+#line 1865 "src/xon.c"
+        break;
+      case 61: /* param_list ::= IDENTIFIER */
+#line 491 "src/xon.lemon"
+{
+    yylhsminor.yy19 = new_list_node(new_param_node(yymsp[0].minor.yy0.s_val));
+}
+#line 1872 "src/xon.c"
+  yymsp[0].minor.yy19 = yylhsminor.yy19;
+        break;
+      case 62: /* param_list ::= param_list COMMA IDENTIFIER */
+#line 494 "src/xon.lemon"
+{
+    yylhsminor.yy19 = yymsp[-2].minor.yy19;
+    link_node(yylhsminor.yy19->data.aggregate.value, new_param_node(yymsp[0].minor.yy0.s_val));
+}
+#line 1881 "src/xon.c"
+  yymsp[-2].minor.yy19 = yylhsminor.yy19;
         break;
       default:
+      /* (63) expr ::= ternary_expr (OPTIMIZED OUT) */ assert(yyruleno!=63);
+      /* (64) arg_list_opt ::= arg_list */ yytestcase(yyruleno==64);
+      /* (65) param_list_opt ::= param_list */ yytestcase(yyruleno==65);
         break;
 /********** End reduce actions ************************************************/
   };
@@ -1145,6 +1926,11 @@ static void yy_parse_failed(
   /* Here code is inserted which will be executed whenever the
   ** parser fails */
 /************ Begin %parse_failure code ***************************************/
+#line 18 "src/xon.lemon"
+
+    pState->had_error = 1;
+    if (pState->result) *pState->result = NULL;
+#line 1933 "src/xon.c"
 /************ End %parse_failure code *****************************************/
   xonParserARG_STORE /* Suppress warning about unused %extra_argument variable */
   xonParserCTX_STORE
@@ -1165,8 +1951,15 @@ static void yy_syntax_error(
 /************ Begin %syntax_error code ****************************************/
 #line 7 "src/xon.lemon"
 
-    fprintf(stderr, "Syntax Error at line %d near token '%s'\n", TOKEN.line, TOKEN.s_val ? TOKEN.s_val : "unknown");
-#line 1169 "src/xon.c"
+    const char* token_text = TOKEN.s_val ? TOKEN.s_val : "unknown";
+    pState->had_error = 1;
+    if (pState->result) *pState->result = NULL;
+    if (pState->on_syntax_error) {
+        pState->on_syntax_error(TOKEN.line, token_text, pState->user_data);
+    } else {
+        fprintf(stderr, "Syntax Error at line %d near token '%s'\n", TOKEN.line, token_text);
+    }
+#line 1962 "src/xon.c"
 /************ End %syntax_error code ******************************************/
   xonParserARG_STORE /* Suppress warning about unused %extra_argument variable */
   xonParserCTX_STORE

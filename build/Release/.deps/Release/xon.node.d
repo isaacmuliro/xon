@@ -1,0 +1,1 @@
+cmd_Release/xon.node := c++ -bundle -undefined dynamic_lookup -Wl,-search_paths_first -mmacosx-version-min=10.7 -arch arm64 -L./Release -stdlib=libc++  -o Release/xon.node Release/obj.target/xon/bindings/xon_node.o Release/obj.target/xon/src/xon_api.o Release/obj.target/xon/src/lexer.o Release/obj.target/xon/src/logger.o 

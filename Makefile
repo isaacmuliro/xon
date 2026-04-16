@@ -1,29 +1,47 @@
-# CC = gcc
-# CFLAGS = -Wall -Wextra -std=c99 -Ibuild
-# LEMON = ./tools/lemon
+CC ?= gcc
+CFLAGS ?= -Wall -Wextra -std=c99
 
-# SRC_DIR = src
-# BUILD_DIR = build
-# SOURCES = $(SRC_DIR)/main.c $(SRC_DIR)/lexer.c $(BUILD_DIR)/xon.c
-# TARGET = xon
+SRC_DIR := src
+INC_DIR := include
+TEST_DIR := tests
 
-# all: $(TARGET)
+TARGET := xon
+LIB_DYLIB := libxon.dylib
+LIB_SO := libxon.so
+TEST_BIN := /tmp/xon_test_suite
 
-# $(BUILD_DIR)/xon.c: $(SRC_DIR)/xon.lemon
-#     @mkdir -p $(BUILD_DIR)
-#     $(LEMON) $(SRC_DIR)/xon.lemon
-#     @mv xon.c xon.h xon.out $(BUILD_DIR)/ 2>/dev/null || true
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Darwin)
+LIB_TARGET := $(LIB_DYLIB)
+LIB_FLAGS := -dynamiclib
+else
+LIB_TARGET := $(LIB_SO)
+LIB_FLAGS := -shared -fPIC
+endif
 
-# $(TARGET): $(BUILD_DIR)/xon.c $(SOURCES)
-#     $(CC) $(CFLAGS) -o $(TARGET) $(SRC_DIR)/main.c $(SRC_DIR)/lexer.c
+.PHONY: all parser cli lib example test clean
 
-# clean:
-#     rm -rf $(BUILD_DIR)/* $(TARGET)
+all: parser cli lib example
 
-# test: $(TARGET)
-#     @echo "Testing basic example..."
-#     ./$(TARGET) tests/test.xon
-#     @echo "\nTesting config example..."
-#     ./$(TARGET) examples/config.xon
+parser:
+	./tools/lemon $(SRC_DIR)/xon.lemon
 
-# .PHONY: all clean test
+cli: parser
+	$(CC) $(CFLAGS) -I$(INC_DIR) -o $(TARGET) \
+		$(SRC_DIR)/main.c $(SRC_DIR)/xon_api.c $(SRC_DIR)/lexer.c $(SRC_DIR)/logger.c
+
+lib: parser
+	$(CC) $(LIB_FLAGS) $(CFLAGS) -I$(INC_DIR) -o $(LIB_TARGET) \
+		$(SRC_DIR)/xon_api.c $(SRC_DIR)/lexer.c $(SRC_DIR)/logger.c
+
+example: lib
+	$(CC) $(CFLAGS) -I$(INC_DIR) -o example_lib examples/use_library.c -L. -lxon
+
+test: cli lib
+	$(CC) $(CFLAGS) -I$(INC_DIR) -o $(TEST_BIN) \
+		$(TEST_DIR)/test_suite.c $(SRC_DIR)/xon_api.c $(SRC_DIR)/lexer.c $(SRC_DIR)/logger.c
+	$(TEST_BIN)
+	python3 $(TEST_DIR)/test_python.py
+
+clean:
+	rm -f $(TARGET) $(LIB_DYLIB) $(LIB_SO) example_lib $(TEST_BIN)

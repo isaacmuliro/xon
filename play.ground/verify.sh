@@ -11,11 +11,10 @@
 echo "🔍 Verifying Xon Project..."
 
 # Check parser
-if [ ! -f "../build/xon.c" ]; then
+if [ ! -f "../src/xon.c" ]; then
     echo "⚠️  Parser not generated. Running lemon..."
     cd ..
     ./tools/lemon src/xon.lemon
-    mv xon.c xon.h xon.out build/ 2>/dev/null || true
     cd play.ground
 else
     echo "✅ Parser found"

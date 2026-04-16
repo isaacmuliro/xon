@@ -1,15 +1,13 @@
-#!/bin/bash
-
+#!/usr/bin/env bash
+set -euo pipefail
 
 # This script builds the Xon project to WebAssembly using Emscripten.
 # It first generates the parser using Lemon, then compiles the source files
 # to produce the WASM module and JavaScript glue code.
-# Make sure Emscripten is installed and configured in your environment before running this script.
-# Run `setup_emscripten.sh` if Emscripten is not installed.
-# Run this script from the play.ground directory.
 
-
-
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+CACHE_DIR="$SCRIPT_DIR/.emscripten-cache"
 
 echo "🌐 Building Xon for WebAssembly..."
 
@@ -19,25 +17,34 @@ if ! command -v emcc &> /dev/null; then
     exit 1
 fi
 
-# Generate parser first (go up one directory)
+# Keep Emscripten cache local to avoid system-cache permission issues.
+mkdir -p "$CACHE_DIR"
+export EM_CACHE="$CACHE_DIR"
+
+# Generate parser first.
 echo "📝 Generating parser..."
-cd ..
-./tools/lemon src/xon.lemon
-mv xon.c xon.h xon.out build/ 2>/dev/null || true
-cd play.ground
+"$ROOT_DIR/tools/lemon" "$ROOT_DIR/src/xon.lemon" || {
+    status=$?
+    if [[ -f "$ROOT_DIR/src/xon.c" && -f "$ROOT_DIR/src/xon.h" ]]; then
+        echo "⚠️  lemon exited with status ${status} (likely parser conflicts); continuing with generated parser artifacts"
+    else
+        exit "${status}"
+    fi
+}
 
 # Compile to WebAssembly
 echo "🔨 Compiling to WASM..."
-emcc ../src/lexer.c ../build/xon.c \
+cd "$SCRIPT_DIR"
+emcc "$ROOT_DIR/src/xon_api.c" "$ROOT_DIR/src/lexer.c" "$ROOT_DIR/src/logger.c" \
     -o xon.js \
     -s WASM=1 \
-    -s EXPORTED_FUNCTIONS='["_malloc","_free"]' \
+    -s EXPORTED_FUNCTIONS='["_malloc","_free","_xonify_string","_xon_eval","_xon_to_json","_xon_to_xon","_xon_free","_xon_string_free","_xon_get_last_error","_xon_get_last_error_stack"]' \
     -s EXPORTED_RUNTIME_METHODS='["ccall","cwrap","FS","UTF8ToString","stringToUTF8"]' \
     -s ALLOW_MEMORY_GROWTH=1 \
     -s MODULARIZE=1 \
     -s EXPORT_NAME="XonModule" \
     -s INVOKE_RUN=0 \
-    -I../build -I../src \
+    -I"$ROOT_DIR/include" -I"$ROOT_DIR/src" \
     -O3 \
     --no-entry
 
@@ -47,5 +54,5 @@ echo "   Output: play.ground/xon.js and play.ground/xon.wasm"
 echo ""
 echo "📖 To test the playground:"
 echo "   cd play.ground"
-echo "   python3 -m http.server 8000"
+echo "   npm start"
 echo "   open http://localhost:8000"

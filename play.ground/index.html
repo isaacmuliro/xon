@@ -75,6 +75,16 @@
         .status.loading { background: #3a3a00; color: #ffeb3b; }
         .status.ready { background: #003a00; color: #4caf50; }
         .status.error { background: #3a0000; color: #f44336; }
+
+        .engine-indicator {
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 0.8em;
+            font-weight: 600;
+            border: 1px solid #444;
+            background: #1f1f1f;
+            color: #9fd1ff;
+        }
         
         .header-btn {
             background: #333;
@@ -380,44 +390,310 @@
         
         /* Documentation View */
         .docs-content {
-            padding: 40px;
-            max-width: 800px;
+            padding: 28px;
             overflow-y: auto;
+            background:
+                radial-gradient(900px 500px at 10% -10%, rgba(102, 163, 255, 0.15), transparent 60%),
+                radial-gradient(600px 380px at 100% 20%, rgba(89, 222, 177, 0.12), transparent 60%),
+                #11151a;
         }
-        
-        .docs-content h2 {
-            font-size: 1.8em;
-            margin-bottom: 20px;
-            color: #fff;
+
+        .docs-shell {
+            max-width: 1180px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
         }
-        
-        .docs-content h3 {
-            font-size: 1.3em;
-            margin: 30px 0 15px;
-            color: #fff;
+
+        .docs-hero {
+            position: relative;
+            overflow: hidden;
+            border-radius: 18px;
+            border: 1px solid #2f3945;
+            padding: 30px;
+            background: linear-gradient(140deg, #141a22 0%, #0f141b 45%, #132026 100%);
+            box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
         }
-        
-        .docs-content p {
+
+        .docs-hero-orb {
+            position: absolute;
+            border-radius: 999px;
+            filter: blur(0.5px);
+            opacity: 0.25;
+            pointer-events: none;
+            animation: docsFloat 7s ease-in-out infinite;
+        }
+
+        .docs-hero-orb.a {
+            width: 220px;
+            height: 220px;
+            right: -70px;
+            top: -90px;
+            background: radial-gradient(circle at 30% 30%, #7fb8ff, #2e5b96 70%);
+        }
+
+        .docs-hero-orb.b {
+            width: 180px;
+            height: 180px;
+            left: 45%;
+            bottom: -90px;
+            background: radial-gradient(circle at 30% 30%, #6cffc4, #1f6a54 70%);
+            animation-delay: 1.2s;
+        }
+
+        .docs-hero h2 {
+            font-size: clamp(1.7rem, 3.3vw, 2.5rem);
+            line-height: 1.2;
+            margin-bottom: 12px;
+            letter-spacing: 0.2px;
+            color: #eff7ff;
+        }
+
+        .docs-hero p {
+            max-width: 760px;
+            color: #b6c3d1;
             line-height: 1.8;
-            margin-bottom: 15px;
-            color: #aaa;
+            margin-bottom: 18px;
         }
-        
-        .docs-content code {
-            background: #0d0d0d;
-            padding: 2px 6px;
-            border-radius: 3px;
-            font-family: 'SF Mono', monospace;
-            color: #fff;
+
+        .docs-badges {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 18px;
         }
-        
-        .docs-content pre {
-            background: #0d0d0d;
-            padding: 20px;
-            border-radius: 8px;
+
+        .docs-badge {
+            border: 1px solid #3b4c5f;
+            background: rgba(16, 24, 33, 0.75);
+            color: #d5e7fb;
+            padding: 6px 10px;
+            border-radius: 999px;
+            font-size: 0.82em;
+            font-weight: 600;
+            letter-spacing: 0.2px;
+        }
+
+        .docs-hero-snippet {
+            position: relative;
+            margin-top: 4px;
+            border: 1px solid #2d3a49;
+            border-radius: 12px;
+            padding: 14px;
+            background: linear-gradient(160deg, #0a1016 0%, #0f171f 100%);
+            color: #d9ebff;
+            font-size: 0.9em;
             overflow-x: auto;
-            margin: 20px 0;
-            border: 1px solid #333;
+        }
+
+        .docs-grid {
+            display: grid;
+            grid-template-columns: 280px minmax(0, 1fr);
+            gap: 20px;
+            align-items: start;
+        }
+
+        .docs-toc {
+            position: sticky;
+            top: 0;
+            border: 1px solid #2e3945;
+            border-radius: 14px;
+            background: #121921;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .docs-toc h3 {
+            font-size: 0.95em;
+            text-transform: uppercase;
+            letter-spacing: 0.7px;
+            color: #9bb2c7;
+            margin-bottom: 4px;
+        }
+
+        .docs-toc a {
+            color: #c5d8ea;
+            text-decoration: none;
+            font-size: 0.92em;
+            line-height: 1.35;
+            padding: 8px 10px;
+            border-radius: 8px;
+            border: 1px solid transparent;
+            transition: all 0.2s ease;
+        }
+
+        .docs-toc a:hover {
+            border-color: #37506a;
+            background: #182332;
+            color: #f0f7ff;
+        }
+
+        .docs-main {
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+        }
+
+        .docs-card {
+            border: 1px solid #2d3946;
+            border-radius: 14px;
+            background: #111820;
+            padding: 22px;
+            animation: docsReveal 0.42s ease both;
+        }
+
+        .docs-card h3 {
+            font-size: 1.28em;
+            margin-bottom: 12px;
+            color: #edf5ff;
+        }
+
+        .docs-card h4 {
+            font-size: 1.02em;
+            margin: 16px 0 8px;
+            color: #d7e8fa;
+        }
+
+        .docs-card p {
+            line-height: 1.78;
+            margin-bottom: 12px;
+            color: #adbbca;
+        }
+
+        .docs-card ul,
+        .docs-card ol {
+            margin: 12px 0 12px 20px;
+            color: #bdd0e3;
+            line-height: 1.68;
+        }
+
+        .docs-card li {
+            margin-bottom: 7px;
+        }
+
+        .docs-content code {
+            background: #0c131b;
+            border: 1px solid #27313d;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+            color: #f3f8ff;
+        }
+
+        .docs-content pre {
+            background: linear-gradient(170deg, #0b1118 0%, #0f161e 100%);
+            padding: 16px;
+            border-radius: 10px;
+            overflow-x: auto;
+            margin: 14px 0;
+            border: 1px solid #2a3642;
+            color: #d0e1f3;
+            line-height: 1.55;
+            font-size: 0.89em;
+        }
+
+        .docs-note {
+            border-left: 3px solid #59deb1;
+            background: #0f1f22;
+            padding: 11px 12px;
+            border-radius: 8px;
+            color: #bdeee0;
+            margin: 12px 0;
+        }
+
+        .docs-warning {
+            border-left: 3px solid #ffb15f;
+            background: #2a1d12;
+            padding: 11px 12px;
+            border-radius: 8px;
+            color: #ffd9ad;
+            margin: 12px 0;
+        }
+
+        .docs-mini-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 12px;
+            margin: 12px 0;
+        }
+
+        .docs-mini-card {
+            border: 1px solid #324252;
+            border-radius: 10px;
+            padding: 12px;
+            background: #0f151d;
+        }
+
+        .docs-mini-card strong {
+            display: block;
+            margin-bottom: 6px;
+            color: #edf6ff;
+        }
+
+        .docs-snippet-actions {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 10px;
+        }
+
+        .docs-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 12px 0;
+            overflow: hidden;
+            border-radius: 10px;
+            border: 1px solid #314252;
+        }
+
+        .docs-table th,
+        .docs-table td {
+            padding: 10px 12px;
+            text-align: left;
+            border-bottom: 1px solid #243140;
+            vertical-align: top;
+        }
+
+        .docs-table th {
+            background: #121d2a;
+            color: #dfebf7;
+            font-size: 0.9em;
+            text-transform: uppercase;
+            letter-spacing: 0.45px;
+        }
+
+        .docs-table td {
+            color: #bdd0e1;
+            font-size: 0.92em;
+        }
+
+        @keyframes docsFloat {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-9px); }
+        }
+
+        @keyframes docsReveal {
+            from {
+                opacity: 0;
+                transform: translateY(8px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @media (max-width: 1100px) {
+            .docs-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .docs-toc {
+                position: static;
+            }
         }
         
         /* Settings View */
@@ -550,6 +826,24 @@
                 gap: 8px;
                 text-align: center;
             }
+
+            .docs-content {
+                padding: 16px;
+            }
+
+            .docs-hero {
+                padding: 18px;
+                border-radius: 12px;
+            }
+
+            .docs-card {
+                padding: 16px;
+                border-radius: 10px;
+            }
+
+            .docs-toc {
+                padding: 12px;
+            }
         }
         
         /* Syntax highlighting for output */
@@ -573,6 +867,7 @@
                     <i class="fas fa-share-alt"></i>
                     Share
                 </button>
+                <div class="engine-indicator" id="engineIndicator">Browser Eval</div>
                 <div class="status loading" id="status">
                     <i class="fas fa-spinner fa-spin"></i> Loading parser...
                 </div>
@@ -585,11 +880,11 @@
             <nav class="sidebar">
                 <div class="nav-section">
                     <h3>Main</h3>
-                    <div class="nav-item active" onclick="switchView('playground')">
+                    <div class="nav-item active" onclick="switchView('playground', this)">
                         <i class="fas fa-play-circle"></i>
                         <span>Playground</span>
                     </div>
-                    <div class="nav-item" onclick="switchView('examples')">
+                    <div class="nav-item" onclick="switchView('examples', this)">
                         <i class="fas fa-folder-open"></i>
                         <span>Examples</span>
                     </div>
@@ -609,11 +904,11 @@
                 
                 <div class="nav-section">
                     <h3>Resources</h3>
-                    <div class="nav-item" onclick="switchView('docs')">
+                    <div class="nav-item" onclick="switchView('docs', this)">
                         <i class="fas fa-book"></i>
                         <span>Documentation</span>
                     </div>
-                    <div class="nav-item" onclick="switchView('settings')">
+                    <div class="nav-item" onclick="switchView('settings', this)">
                         <i class="fas fa-cog"></i>
                         <span>Settings</span>
                     </div>
@@ -703,17 +998,17 @@
                         <div class="panel">
                             <div class="panel-header">
                                 <i class="fas fa-sitemap"></i>
-                                <span>Output (Parsed AST)</span>
+                                <span>Output</span>
                             </div>
                             <div class="panel-content">
-                                <div id="output" class="output">Press "Parse" to analyze the code...</div>
+                                <div id="output" class="output">Press "Run" to parse/evaluate the code...</div>
                             </div>
                         </div>
                         
                         <div class="toolbar">
                             <button class="primary" onclick="parseCode()">
                                 <i class="fas fa-play"></i>
-                                Parse
+                                Run
                             </button>
                             <button onclick="formatCode()">
                                 <i class="fas fa-magic"></i>
@@ -730,6 +1025,10 @@
                             <button onclick="convertToJSON()">
                                 <i class="fas fa-exchange-alt"></i>
                                 To JSON
+                            </button>
+                            <button onclick="convertToXon()">
+                                <i class="fas fa-code"></i>
+                                To Xon
                             </button>
                             <button onclick="showMinified()">
                                 <i class="fas fa-compress-alt"></i>
@@ -826,78 +1125,472 @@
     mixed: [1, "two", true]
 }</pre>
                         </div>
+
+                        <div class="example-card" onclick="loadExample('variables')">
+                            <h3>
+                                <i class="fas fa-calculator"></i>
+                                Variables & Expr
+                            </h3>
+                            <p>Declarations, references, arithmetic, and boolean logic</p>
+                            <pre>{
+    let base = 10,
+    let rate = 1.5,
+    total: base * rate + 2
+}</pre>
+                        </div>
+
+                        <div class="example-card" onclick="loadExample('functions')">
+                            <h3>
+                                <i class="fas fa-function"></i>
+                                Functions
+                            </h3>
+                            <p>Arrow functions plus function/func/fun/fx aliases</p>
+                            <pre>{
+    let tax = 0.16,
+    fx add_tax(price, i) { price + (price * tax) },
+    total: add_tax(100, 0)
+}</pre>
+                        </div>
+
+                        <div class="example-card" onclick="loadExample('conditionals')">
+                            <h3>
+                                <i class="fas fa-code-branch"></i>
+                                Conditionals
+                            </h3>
+                            <p>Ternary, if/else expressions, and nullish coalescing</p>
+                            <pre>{
+    let retries = null,
+    effective_retries: retries ?? 3,
+    state: if (effective_retries > 1) "retry" else "once"
+}</pre>
+                        </div>
+
+                        <div class="example-card" onclick="loadExample('runtime_helpers')">
+                            <h3>
+                                <i class="fas fa-tools"></i>
+                                Runtime Helpers
+                            </h3>
+                            <p>map/filter/while_loop runtime helpers</p>
+                            <pre>{
+    nums: [1,2,3,4],
+    doubled: map(nums, (v, i) => v * 2),
+    evens: filter(nums, (v, i) => v % 2 == 0)
+}</pre>
+                        </div>
+
+                        <div class="example-card" onclick="loadExample('template_scope')">
+                            <h3>
+                                <i class="fas fa-font"></i>
+                                Template & Scope
+                            </h3>
+                            <p>template(), symbols(), defined(), env()</p>
+                            <pre>{
+    let name = "Xon",
+    msg: template("Hello ${name}"),
+    has_name: defined("name")
+}</pre>
+                        </div>
+
+                        <div class="example-card" onclick="loadExample('types_schema')">
+                            <h3>
+                                <i class="fas fa-shield-alt"></i>
+                                Type & Schema
+                            </h3>
+                            <p>typeof, schema_of, conforms, assert_type</p>
+                            <pre>{
+    sample: { id: 1, tags: ["a"] },
+    t: typeof(sample),
+    ok: conforms(sample, schema_of(sample))
+}</pre>
+                        </div>
                     </div>
                 </div>
                 
                 <!-- Documentation View -->
                 <div id="docs" class="view">
                     <div class="docs-content">
-                        <h2><i class="fas fa-book"></i> Xon Language Documentation</h2>
-                        
-                        <h3>What is Xon?</h3>
-                        <p>Xon (Xerxis Object Notation) is a modern configuration language that extends JSON with developer-friendly features like comments, trailing commas, hexadecimal numbers, and unquoted keys.</p>
-                        
-                        <h3>Key Features</h3>
-                        <p>
-                            <strong>✓ Comments:</strong> Single-line <code>//</code> comments<br>
-                            <strong>✓ Trailing Commas:</strong> No more syntax errors from trailing commas<br>
-                            <strong>✓ Hex Numbers:</strong> Use <code>0xFF</code> notation<br>
-                            <strong>✓ Unquoted Keys:</strong> Simple identifiers don't need quotes<br>
-                            <strong>✓ JSON Compatible:</strong> Valid JSON is valid Xon
-                        </p>
-                        
-                        <h3>Syntax Examples</h3>
-                        <pre>{
-    // Comments are allowed
-    server_name: "MyServer",  // Unquoted keys
-    port: 8080,
-    max_connections: 0xFF,    // Hex numbers
-    
-    features: [
-        "api",
-        "websockets",         // Trailing commas OK
-    ]
+                        <div class="docs-shell">
+                            <section class="docs-hero">
+                                <span class="docs-hero-orb a"></span>
+                                <span class="docs-hero-orb b"></span>
+                                <h2><i class="fas fa-book-open"></i> Xon Developer Docs + Playground</h2>
+                                <p>
+                                    Xon (Xerxis Object Notation) is JSON-compatible configuration with optional runtime expressions.
+                                    This page is the product documentation and playground for v1.0.0, including production setup
+                                    steps for npm projects and web frameworks.
+                                </p>
+                                <div class="docs-badges">
+                                    <span class="docs-badge">npm: @xerxisfy/xon</span>
+                                    <span class="docs-badge">Node 18+</span>
+                                    <span class="docs-badge">Build to JSON</span>
+                                    <span class="docs-badge">CLI + Native Addon</span>
+                                    <span class="docs-badge">Trusted Config Runtime</span>
+                                </div>
+                                <pre class="docs-hero-snippet">{
+    let host = "0.0.0.0",
+    let port = 8080,
+    service: {
+        host: host,
+        port: port,
+    },
 }</pre>
-                        
-                        <h3>Data Types</h3>
-                        <pre>// Strings
-name: "Hello World"
-path: "C:\\Program Files\\"
+                            </section>
 
-// Numbers
-count: 42
-price: 19.99
-memory: 0x1000     // Hex
+                            <div class="docs-grid">
+                                <aside class="docs-toc">
+                                    <h3>On This Page</h3>
+                                    <a href="#docs-v1">1. v1.0.0 Expectations</a>
+                                    <a href="#docs-install">2. Install + Verify</a>
+                                    <a href="#docs-build">3. Build-Time JSON Flow</a>
+                                    <a href="#docs-config">4. xon.config.json</a>
+                                    <a href="#docs-frameworks">5. Framework Usage</a>
+                                    <a href="#docs-first-file">6. First Xon File</a>
+                                    <a href="#docs-data">7. Syntax + Data Types</a>
+                                    <a href="#docs-expressions">8. Expressions</a>
+                                    <a href="#docs-functions">9. Functions</a>
+                                    <a href="#docs-runtime">10. Runtime Helpers</a>
+                                    <a href="#docs-safety">11. Safety + Diagnostics</a>
+                                    <a href="#docs-cli-api">12. CLI + API</a>
+                                    <a href="#docs-status">13. Works vs Not Yet</a>
+                                    <a href="#docs-path">14. Learning Paths</a>
+                                    <a href="#docs-support">15. Support</a>
+                                </aside>
 
-// Booleans & Null
-enabled: true
-disabled: false
-value: null
+                                <div class="docs-main">
+                                    <section id="docs-v1" class="docs-card">
+                                        <h3>1) What Developers Should Expect in v1.0.0</h3>
+                                        <p>
+                                            Xon v1.0.0 is production-ready for trusted, version-controlled configuration files.
+                                            The npm package gives you a native parser/runtime and CLI for parse, validate, format,
+                                            convert, eval, and build-time JSON output.
+                                        </p>
+                                        <div class="docs-mini-grid">
+                                            <div class="docs-mini-card">
+                                                <strong>Stable Today</strong>
+                                                npm package <code>@xerxisfy/xon</code>, Node 18+, native addon, and CLI workflows.
+                                            </div>
+                                            <div class="docs-mini-card">
+                                                <strong>Best Production Pattern</strong>
+                                                Keep <code>.xon</code> in source control, validate in CI, and build to JSON for frontend apps.
+                                            </div>
+                                            <div class="docs-mini-card">
+                                                <strong>Safety Note</strong>
+                                                Use runtime eval for trusted inputs unless you isolate execution and apply limits.
+                                            </div>
+                                        </div>
+                                    </section>
 
-// Arrays
-items: [1, 2, 3,]
-tags: ["red", "green", "blue"]
+                                    <section id="docs-install" class="docs-card">
+                                        <h3>2) Install + Verify (Node 18)</h3>
+                                        <p>Use these exact commands in a new or existing project.</p>
+                                        <pre>export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+nvm use 18
 
-// Objects
-config: {
-    debug: true,
-    timeout: 30
+npm install @xerxisfy/xon
+npx xon --help</pre>
+                                        <h4>Minimal parse usage in Node</h4>
+                                        <pre>const xon = require("@xerxisfy/xon");
+const cfg = xon.xonifyString('{ app: "api", port: 8080 }');
+console.log(cfg.port); // 8080</pre>
+                                    </section>
+
+                                    <section id="docs-build" class="docs-card">
+                                        <h3>3) Build-Time JSON Conversion (Recommended)</h3>
+                                        <p>
+                                            Browsers and frontend frameworks do not natively parse <code>.xon</code> files like JSON.
+                                            The reliable production flow is to compile Xon to JSON during build.
+                                        </p>
+                                        <pre># Default convention:
+# config/app.xon -> src/generated/app-config.json
+npx xon build
+
+# Single-file explicit conversion
+npx xon build config/app.xon src/generated/app-config.json
+
+# Directory conversion (recursive)
+npx xon build config src/generated</pre>
+                                        <div class="docs-note">
+                                            Guarantee: generated output is standard JSON, so your app/framework reads the JSON file the same
+                                            way it reads any hand-written JSON file.
+                                        </div>
+                                        <div class="docs-snippet-actions">
+                                            <button class="file-btn" onclick="loadDocSnippet('build_source')">
+                                                <i class="fas fa-play"></i> Load Build Source Example
+                                            </button>
+                                        </div>
+                                    </section>
+
+                                    <section id="docs-config" class="docs-card">
+                                        <h3>4) Zero-Arg Build With xon.config.json</h3>
+                                        <p>
+                                            Add a project-level config once, then teams can run <code>xon build</code> without passing paths.
+                                        </p>
+                                        <pre>{
+  "build": {
+    "input": "config",
+    "output": "src/generated"
+  }
 }</pre>
+                                        <p>Save it as <code>xon.config.json</code> in your project root, then run:</p>
+                                        <pre>npx xon build</pre>
+                                        <p>
+                                            CLI arguments still override config when needed:
+                                            <code>npx xon build config/app.xon src/generated/app-config.json</code>
+                                        </p>
+                                    </section>
 
-                        <h3>Comments</h3>
-                        <pre>// Line comments
-{
-    key: "value"  // Inline comments
+                                    <section id="docs-frameworks" class="docs-card">
+                                        <h3>5) Framework Usage (Vite/Next/Webpack and Others)</h3>
+                                        <p>
+                                            Add one build script, commit your <code>.xon</code> files, and import generated JSON in app code.
+                                        </p>
+                                        <h4>package.json scripts</h4>
+                                        <pre>{
+  "scripts": {
+    "xon:build": "xon build",
+    "build": "npm run xon:build && vite build",
+    "dev": "npm run xon:build && vite dev"
+  }
 }</pre>
+                                        <h4>App import</h4>
+                                        <pre>import appConfig from "./generated/app-config.json";
+// use appConfig anywhere in your app</pre>
+                                        <div class="docs-warning">
+                                            Important: apps do not consume raw <code>.xon</code> by default. They consume the generated JSON.
+                                            Running <code>xon build</code> in your pipeline makes this seamless for developers.
+                                        </div>
+                                    </section>
 
-                        <h3>File Operations</h3>
-                        <p>The playground supports creating, opening, and saving <code>.xon</code> files:</p>
-                        <p>
-                            • <strong>New:</strong> Start with a fresh file<br>
-                            • <strong>Open:</strong> Load a <code>.xon</code> file from your computer<br>
-                            • <strong>Save:</strong> Download your current work<br>
-                            • <strong>Share:</strong> Get a shareable link
-                        </p>
+                                    <section id="docs-first-file" class="docs-card">
+                                        <h3>6) Your First Xon File</h3>
+                                        <p>Start with this structure and evaluate in the playground.</p>
+                                        <pre>{
+    // Basic app configuration
+    app_name: "BillingService",
+    region: "us-east-1",
+    replicas: 3,
+    features: ["api", "audit",],
+}</pre>
+                                        <div class="docs-snippet-actions">
+                                            <button class="file-btn" onclick="loadDocSnippet('first_file')">
+                                                <i class="fas fa-play"></i> Load In Playground
+                                            </button>
+                                        </div>
+                                        <h4>CLI workflow</h4>
+                                        <pre>xon validate config.xon
+xon format config.xon -o config.formatted.xon
+xon eval config.xon
+xon convert config.xon config.json</pre>
+                                    </section>
+
+                                    <section id="docs-data" class="docs-card">
+                                        <h3>7) Syntax + Data Types</h3>
+                                        <table class="docs-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Type</th>
+                                                    <th>Examples</th>
+                                                    <th>Notes</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <tr>
+                                                    <td>String</td>
+                                                    <td><code>"hello"</code>, <code>"line\nnext"</code></td>
+                                                    <td>Supports escapes and unicode escapes.</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>Number</td>
+                                                    <td><code>42</code>, <code>3.14</code>, <code>0xFF</code>, <code>1.2e3</code></td>
+                                                    <td>Integer and floating-point forms, plus hex literals.</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>Boolean / Null</td>
+                                                    <td><code>true</code>, <code>false</code>, <code>null</code></td>
+                                                    <td>Standard literal values.</td>
+                                                </tr>
+                                                <tr>
+                                                    <td>List / Object</td>
+                                                    <td><code>[1,2,3]</code>, <code>{ key: "value" }</code></td>
+                                                    <td>Trailing commas and unquoted keys are supported.</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                        <pre>{
+    // Comment styles
+    // line comment
+    # hash comment
+    /* block comment */
+
+    path: "C:\\temp\\data",
+    limit_hex: 0x40,
+    flags: [true, false, null,],
+}</pre>
+                                    </section>
+
+                                    <section id="docs-expressions" class="docs-card">
+                                        <h3>8) Expressions, Conditionals, and Variables</h3>
+                                        <p>
+                                            Expression support includes precedence-aware arithmetic, comparisons, short-circuit boolean logic,
+                                            null coalescing, ternary, and expression-style <code>if (...) ... else ...</code>.
+                                        </p>
+                                        <pre>{
+    let base = 10,
+    let rate = 1.25,
+    let retries = null,
+
+    subtotal: base * rate + 2,
+    effective_retries: retries ?? 3,
+    mode: if (effective_retries > 1) "retry" else "single",
+    health: subtotal > 10 ? "ok" : "warn",
+}</pre>
+                                        <div class="docs-note">
+                                            Scope rule: if you want to reuse a value later, declare it with <code>let</code> or <code>const</code>.
+                                            Plain object fields do not become symbols.
+                                        </div>
+                                        <div class="docs-snippet-actions">
+                                            <button class="file-btn" onclick="loadDocSnippet('expressions')">
+                                                <i class="fas fa-play"></i> Load In Playground
+                                            </button>
+                                        </div>
+                                    </section>
+
+                                    <section id="docs-functions" class="docs-card">
+                                        <h3>9) Functions (Arrow + Keyword Forms)</h3>
+                                        <p>
+                                            Xon supports closures and function aliases: <code>function</code>, <code>func</code>,
+                                            <code>fun</code>, and <code>fx</code>.
+                                        </p>
+                                        <pre>{
+    let tax = 0.16,
+    function add(a, b) { a + b },
+    func mul(a, b) => a * b,
+    fun sub(a, b) => a - b,
+    fx add_tax(amount, i) { amount + (amount * tax) },
+    let square = function(x) { x * x },
+
+    sum: add(4, 5),
+    product: mul(4, 5),
+    reduced: sub(10, 3),
+    taxed: add_tax(100, 0),
+    squared: square(9),
+}</pre>
+                                        <div class="docs-snippet-actions">
+                                            <button class="file-btn" onclick="loadDocSnippet('functions_full')">
+                                                <i class="fas fa-play"></i> Load In Playground
+                                            </button>
+                                        </div>
+                                    </section>
+
+                                    <section id="docs-runtime" class="docs-card">
+                                        <h3>10) Runtime Helpers</h3>
+                                        <pre>{
+    let nums = [1, 2, 3, 4, 5],
+    doubled: map(nums, (v, i) => v * 2),
+    evens: filter(nums, (v, i) => v % 2 == 0),
+    walk: while_loop(0, (state, i) => state < 4, (state, i) => state + 1, 32),
+    let app = "Xon",
+    banner: template("Hello from ${app}"),
+}</pre>
+                                        <div class="docs-snippet-actions">
+                                            <button class="file-btn" onclick="loadDocSnippet('runtime_helpers')">
+                                                <i class="fas fa-play"></i> Load In Playground
+                                            </button>
+                                        </div>
+                                    </section>
+
+                                    <section id="docs-safety" class="docs-card">
+                                        <h3>11) Safety, Diagnostics, and Type Modes</h3>
+                                        <p>
+                                            Runtime execution can be constrained using limits and policies. Diagnostics include line-aware
+                                            error messages and call-stack traces.
+                                        </p>
+                                        <pre>// C API example
+XonEvalOptions options;
+xon_eval_options_default(&options);
+options.max_call_depth = 512;
+options.max_call_count = 50000;
+options.max_eval_steps = 250000;
+options.max_result_nodes = 100000;
+options.duplicate_keys = XON_DUPLICATE_KEY_ERROR;
+options.type_mode = XON_TYPE_MODE_STRICT;
+
+XonValue* out = xon_eval_ex(ast, &options);
+if (!out) {
+    fprintf(stderr, "Eval error: %s\n", xon_get_last_error());
+    fprintf(stderr, "Eval stack: %s\n", xon_get_last_error_stack());
+}</pre>
+                                        <h4>Key helpers</h4>
+                                        <ul>
+                                            <li><code>typeof(value)</code>, <code>schema_of(value)</code>, <code>conforms(value, schema)</code>, <code>assert_type(value, expected)</code></li>
+                                            <li><code>symbols()</code> and <code>defined(name)</code> for visibility checks</li>
+                                            <li>Duplicate key policy and type modes via eval options</li>
+                                        </ul>
+                                    </section>
+
+                                    <section id="docs-cli-api" class="docs-card">
+                                        <h3>12) CLI + API Quick Reference</h3>
+                                        <h4>CLI</h4>
+                                        <pre>xon parse file.xon
+xon validate file.xon
+xon format file.xon -o output.xon
+xon convert input.xon output.json
+xon eval file.xon
+xon build [input] [output]</pre>
+                                        <h4>Node</h4>
+                                        <pre>const xon = require("@xerxisfy/xon");
+const fileCfg = xon.xonify("./config/app.xon");
+const inlineCfg = xon.xonifyString('{ retries: 3 }');
+const rendered = xon.stringify({ name: "Xon" }, { indent: 2 });</pre>
+                                    </section>
+
+                                    <section id="docs-status" class="docs-card">
+                                        <h3>13) Works Today vs Not Yet</h3>
+                                        <h4>Works Today (v1.0.0)</h4>
+                                        <ul>
+                                            <li>Parser for JSON-compatible structures with comments, trailing commas, and unquoted keys.</li>
+                                            <li>Runtime expressions, declarations, functions/closures, conditionals, and built-in helpers.</li>
+                                            <li>CLI commands: <code>parse</code>, <code>validate</code>, <code>format</code>, <code>convert</code>, <code>eval</code>, <code>build</code>.</li>
+                                            <li>Build-time conversion workflow for frontend apps via <code>xon build</code> and <code>xon.config.json</code>.</li>
+                                            <li>Node package with native addon and C API for embedding.</li>
+                                        </ul>
+                                        <h4>Not Yet (Post v1.0.0 Roadmap)</h4>
+                                        <ul>
+                                            <li>First-class import/include module system with full file-resolution semantics.</li>
+                                            <li>Built-in schema validation engine.</li>
+                                            <li>Full advanced literal roadmap (for example binary/octal literal forms).</li>
+                                        </ul>
+                                    </section>
+
+                                    <section id="docs-path" class="docs-card">
+                                        <h3>14) Learning Paths By Experience Level</h3>
+                                        <div class="docs-mini-grid">
+                                            <div class="docs-mini-card">
+                                                <strong>Beginner</strong>
+                                                Start with object/list syntax, comments, and <code>validate</code>/<code>format</code>. Then add basic <code>let</code> + arithmetic.
+                                            </div>
+                                            <div class="docs-mini-card">
+                                                <strong>Intermediate</strong>
+                                                Add functions, closures, <code>map</code>/<code>filter</code>, templates, and build-time JSON conversion.
+                                            </div>
+                                            <div class="docs-mini-card">
+                                                <strong>Advanced</strong>
+                                                Use custom eval options, strict runtime policies, and app-level schema enforcement after parsing.
+                                            </div>
+                                        </div>
+                                    </section>
+
+                                    <section id="docs-support" class="docs-card">
+                                        <h3>15) Support and Release Contact</h3>
+                                        <p>
+                                            For release questions and production adoption support:
+                                            <code>email: xerxisfy@gmail.com</code>
+                                        </p>
+                                    </section>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 
@@ -938,6 +1631,13 @@ config: {
                         
                         <div class="setting-group">
                             <h3>Parser</h3>
+                            <div class="setting-item">
+                                <label>Execution mode</label>
+                                <select id="executionMode" onchange="changeExecutionMode()">
+                                    <option value="browser" selected>Browser (WASM parse+eval)</option>
+                                    <option value="sandbox">Sandbox API (eval)</option>
+                                </select>
+                            </div>
                             <div class="setting-item">
                                 <label>Auto-parse on change</label>
                                 <select id="autoParse" onchange="toggleAutoParse()">
@@ -1003,6 +1703,8 @@ config: {
         let currentFile = 'untitled.xon';
         let fileModified = true;
         let autoParseEnabled = false;
+        let executionMode = 'browser';
+        let formatOutputEnabled = true;
 
         // Initialize CodeMirror
         editor = CodeMirror.fromTextArea(document.getElementById('editor'), {
@@ -1039,6 +1741,38 @@ config: {
             statusEl.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Failed to load';
             statusEl.className = 'status error';
         });
+
+        function escapeHtml(value) {
+            return String(value)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        function updateEngineIndicator() {
+            const indicator = document.getElementById('engineIndicator');
+            if (!indicator) return;
+            indicator.textContent = executionMode === 'sandbox' ? 'Sandbox Eval' : 'Browser Eval';
+            indicator.style.color = executionMode === 'sandbox' ? '#ffd36a' : '#9fd1ff';
+        }
+
+        async function checkSandboxHealth() {
+            if (executionMode !== 'sandbox') return false;
+            const output = document.getElementById('output');
+            try {
+                const response = await fetch('/api/healthz', { cache: 'no-store' });
+                if (!response.ok) {
+                    throw new Error(`Sandbox API not ready (HTTP ${response.status})`);
+                }
+                return true;
+            } catch (error) {
+                output.innerHTML = `<span style="color: #f44336;">❌ Sandbox API unavailable</span>\n\n${escapeHtml(error.message)}\n\nStart it with: cd play.ground && npm run start:sandbox`;
+                output.className = 'output error';
+                return false;
+            }
+        }
 
 
         // File operations
@@ -1130,81 +1864,7 @@ config: {
             output.className = 'output success';
         }
         
-      
-        
-        // function setFileModified(modified) {
-        //     fileModified = modified;
-        //     const statusEl = document.getElementById('file-status');
-        //     statusEl.textContent = modified ? '• Modified' : '';
-        //     statusEl.style.color = modified ? '#f57c00' : '#4caf50';
-        // }
 
-        // function updateFilename(filename) {
-        //     currentFile = filename;
-        //     document.getElementById('filename').textContent = filename;
-        //     setFileModified(false);
-        // }
-
-        // function newFile() {
-        //     if (fileModified && !confirm('You have unsaved changes. Create new file anyway?')) {
-        //         return;
-        //     }
-        //     editor.setValue('{\n    // New Xon file\n    \n}');
-        //     updateFilename('untitled.xon');
-        // }
-
-        // function openFile() {
-        //     document.getElementById('fileInput').click();
-        // }
-
-        // function handleFileOpen(event) {
-        //     const file = event.target.files[0];
-        //     if (!file) return;
-
-        //     const reader = new FileReader();
-        //     reader.onload = (e) => {
-        //         editor.setValue(e.target.result);
-        //         updateFilename(file.name);
-        //         parseCode();
-        //     };
-        //     reader.readAsText(file);
-        // }
-
-        // function saveFile() {
-        //     document.getElementById('saveFilename').value = currentFile;
-        //     document.getElementById('saveModal').classList.add('show');
-        // }
-
-        // function closeSaveModal() {
-        //     document.getElementById('saveModal').classList.remove('show');
-        // }
-
-        // function confirmSave() {
-        //     const filename = document.getElementById('saveFilename').value.trim();
-        //     if (!filename) return;
-            
-        //     downloadFileWithName(filename);
-        //     updateFilename(filename);
-        //     closeSaveModal();
-        // }
-
-        // function downloadFile() {
-        //     downloadFileWithName(currentFile);
-        // }
-
-        // function downloadFileWithName(filename) {
-        //     const content = editor.getValue();
-        //     const blob = new Blob([content], { type: 'text/plain' });
-        //     const url = URL.createObjectURL(blob);
-        //     const a = document.createElement('a');
-        //     a.href = url;
-        //     a.download = filename.endsWith('.xon') ? filename : filename + '.xon';
-        //     document.body.appendChild(a);
-        //     a.click();
-        //     document.body.removeChild(a);
-        //     URL.revokeObjectURL(url);
-        //     setFileModified(false);
-        // }
 
         // Share functionality
         function shareCode() {
@@ -1241,46 +1901,129 @@ config: {
         }
 
         // View switching
-        function switchView(viewName) {
+        function switchView(viewName, clickedElement = null) {
             document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
             document.getElementById(viewName).classList.add('active');
             
             document.querySelectorAll('.nav-item').forEach(item => {
                 item.classList.remove('active');
             });
-            event.currentTarget.classList.add('active');
+            if (!clickedElement) {
+                clickedElement = Array.from(document.querySelectorAll('.nav-item'))
+                    .find(item => (item.getAttribute('onclick') || '').includes(`switchView('${viewName}'`));
+            }
+            if (clickedElement) {
+                clickedElement.classList.add('active');
+            }
         }
 
-        // Parser functions
-        function parseCode() {
-            const code = editor.getValue();
+        // Parser/runtime functions
+        function ensureParserReady() {
+            return Boolean(xonParser);
+        }
+
+        function toJson(value, pretty) {
+            try {
+                return JSON.stringify(value, null, pretty ? 2 : 0);
+            } catch (_) {
+                return String(value);
+            }
+        }
+
+        function normalizeFunctionSyntax(source) {
+            // Kept as a compatibility hook. Core parser now supports these forms directly.
+            return source;
+        }
+
+        async function evaluateViaSandbox(code, output) {
+            output.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Evaluating in sandbox...';
+            output.className = 'output';
+
+            const request = {
+                code,
+                options: {
+                    duplicateKeys: 'error',
+                    typeMode: 'dynamic',
+                },
+            };
+
+            const response = await fetch('/api/eval', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(request),
+            });
+            const payload = await response.json().catch(() => ({
+                ok: false,
+                error: { message: 'Sandbox API returned invalid JSON.' },
+            }));
+
+            if (!response.ok || !payload.ok) {
+                const message = payload?.error?.message || `Sandbox request failed (${response.status})`;
+                const details = payload?.error?.stack ? `\n\n${payload.error.stack}` : '';
+                output.innerHTML = `<span style="color: #f44336;">❌ Sandbox Eval Error</span>\n\n${escapeHtml(message)}${escapeHtml(details)}`;
+                output.className = 'output error';
+                return;
+            }
+
+            const duration = typeof payload?.meta?.durationMs === 'number' ? ` (${payload.meta.durationMs} ms)` : '';
+            const body = formatOutputEnabled
+                ? (payload.renderedXon || toJson(payload.result, true))
+                : toJson(payload.result, false);
+            output.innerHTML = `<span style="color: #4caf50;">✅ Sandbox Eval Successful${duration}</span>\n\n${escapeHtml(body)}`;
+            output.className = 'output success';
+        }
+
+        async function parseCode() {
+            const code = normalizeFunctionSyntax(editor.getValue());
             const output = document.getElementById('output');
-            
-            if (!xonParser) {
+
+            if (executionMode === 'sandbox') {
+                try {
+                    await evaluateViaSandbox(code, output);
+                } catch (error) {
+                    output.innerHTML = `<span style="color: #f44336;">❌ Sandbox Request Error</span>\n\n${escapeHtml(error.message)}`;
+                    output.className = 'output error';
+                }
+                return;
+            }
+
+            if (!ensureParserReady()) {
                 output.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Parser still loading...';
                 output.className = 'output';
                 return;
             }
-            
+
             try {
-                const result = xonParser.parse(code);
-                
-                if (result.success) {
-                    const formatted = xonParser.formatAST(result.ast);
-                    output.innerHTML = `<span style="color: #4caf50;">✅ Parse Successful!</span>\n\n${formatted}`;
+                const evaluated = xonParser.evaluate(code);
+                if (evaluated.success) {
+                    const formatted = formatOutputEnabled
+                        ? xonParser.formatXon(evaluated.result, 4)
+                        : toJson(evaluated.result, false);
+                    output.innerHTML = `<span style="color: #4caf50;">✅ Browser Eval Successful</span>\n\n${escapeHtml(formatted)}`;
                     output.className = 'output success';
-                } else {
-                    output.innerHTML = `<span style="color: #f44336;">❌ Parse Error</span>\n\n${result.error}`;
-                    output.className = 'output error';
+                    return;
                 }
+
+                const parsed = xonParser.parse(code);
+                if (parsed.success) {
+                    const formatted = formatOutputEnabled
+                        ? xonParser.formatAST(parsed.ast)
+                        : toJson(xonParser.astToJSON(parsed.ast), false);
+                    output.innerHTML = `<span style="color: #ff9800;">⚠️ Parse succeeded, evaluation failed</span>\n\n${escapeHtml(evaluated.error)}\n\nParsed value:\n${escapeHtml(formatted)}`;
+                    output.className = 'output warning';
+                    return;
+                }
+
+                output.innerHTML = `<span style="color: #f44336;">❌ Parse Error</span>\n\n${escapeHtml(parsed.error || evaluated.error)}`;
+                output.className = 'output error';
             } catch (e) {
-                output.innerHTML = `<span style="color: #f44336;">❌ Error</span>\n\n${e.message}`;
+                output.innerHTML = `<span style="color: #f44336;">❌ Runtime Error</span>\n\n${escapeHtml(e.message)}`;
                 output.className = 'output error';
             }
         }
 
-        function validateCode() {
-            parseCode();
+        async function validateCode() {
+            await parseCode();
             const output = document.getElementById('output');
             if (output.className.includes('success')) {
                 alert('✅ Code is valid!');
@@ -1290,59 +2033,18 @@ config: {
         }
 
         function formatCode() {
-            const code = editor.getValue();
-            try {
-                const result = xonParser.parse(code);
-                if (result.success) {
-                    const formatted = formatXonCode(result.ast);
-                    editor.setValue(formatted);
-                    setFileModified(true);
-                }
-            } catch (e) {
-                alert('Cannot format code with syntax errors.');
+            const code = normalizeFunctionSyntax(editor.getValue());
+            if (!ensureParserReady()) {
+                alert('Parser still loading.');
+                return;
             }
-        }
-
-        function formatXonCode(ast, indent = 0) {
-            const pad = '    '.repeat(indent);
-            
-            switch (ast.type) {
-                case 'OBJECT':
-                    if (ast.pairs.length === 0) return '{}';
-                    let obj = '{\n';
-                    ast.pairs.forEach(({ key, value }, i) => {
-                        obj += `${pad}    ${key}: ${formatXonCode(value, indent + 1)}`;
-                        if (i < ast.pairs.length - 1) obj += ',';
-                        obj += '\n';
-                    });
-                    obj += `${pad}}`;
-                    return obj;
-                    
-                case 'LIST':
-                    if (ast.items.length === 0) return '[]';
-                    if (ast.items.length === 1 && ast.items[0].type !== 'OBJECT' && ast.items[0].type !== 'LIST') {
-                        return `[${formatXonCode(ast.items[0], 0)}]`;
-                    }
-                    let list = '[\n';
-                    ast.items.forEach((item, i) => {
-                        list += `${pad}    ${formatXonCode(item, indent + 1)}`;
-                        if (i < ast.items.length - 1) list += ',';
-                        list += '\n';
-                    });
-                    list += `${pad}]`;
-                    return list;
-                    
-                case 'STRING':
-                    return `"${ast.value}"`;
-                case 'NUMBER':
-                    return String(ast.value);
-                case 'BOOL':
-                    return String(ast.value);
-                case 'NULL':
-                    return 'null';
-                default:
-                    return '?';
+            const formattedResult = xonParser.formatSource(code, true);
+            if (formattedResult.success) {
+                editor.setValue(formattedResult.formatted);
+                setFileModified(true);
+                return;
             }
+            alert(`Cannot format code.\n${formattedResult.error}`);
         }
 
         function clearEditor() {
@@ -1356,62 +2058,87 @@ config: {
         }
 
         function convertToJSON() {
-            const code = editor.getValue();
+            const code = normalizeFunctionSyntax(editor.getValue());
+            if (!ensureParserReady()) {
+                alert('Parser still loading.');
+                return;
+            }
             try {
-                const result = xonParser.parse(code);
-                if (result.success) {
-                    const json = astToJSON(result.ast);
-                    const formatted = JSON.stringify(json, null, 2);
-                    
-                    // Show in output
-                    const output = document.getElementById('output');
-                    output.innerHTML = `<span style="color: #4caf50;">JSON Conversion:</span>\n\n${formatted}`;
-                    output.className = 'output success';
-                    
-                    // Copy to clipboard
-                    navigator.clipboard.writeText(formatted).then(() => {
-                        alert('JSON copied to clipboard!');
-                    });
+                const evaluated = xonParser.evaluate(code);
+                const parsed = evaluated.success ? { success: true, ast: evaluated.result } : xonParser.parse(code);
+                if (!parsed.success) {
+                    alert(`Cannot convert code.\n${parsed.error || evaluated.error}`);
+                    return;
                 }
+
+                const json = xonParser.astToJSON(parsed.ast);
+                const formatted = JSON.stringify(json, null, 2);
+
+                const output = document.getElementById('output');
+                output.innerHTML = `<span style="color: #4caf50;">JSON Conversion:</span>\n\n${escapeHtml(formatted)}`;
+                output.className = 'output success';
+
+                navigator.clipboard.writeText(formatted).then(() => {
+                    alert('JSON copied to clipboard!');
+                });
             } catch (e) {
-                alert('Cannot convert code with syntax errors.');
+                alert(`Cannot convert code.\n${e.message}`);
             }
         }
 
-        function astToJSON(ast) {
-            switch (ast.type) {
-                case 'OBJECT':
-                    const obj = {};
-                    ast.pairs.forEach(({ key, value }) => {
-                        obj[key] = astToJSON(value);
-                    });
-                    return obj;
-                case 'LIST':
-                    return ast.items.map(item => astToJSON(item));
-                case 'STRING':
-                case 'NUMBER':
-                case 'BOOL':
-                case 'NULL':
-                    return ast.value;
-                default:
-                    return null;
+        function convertToXon() {
+            const code = editor.getValue();
+            if (!ensureParserReady()) {
+                alert('Parser still loading.');
+                return;
+            }
+            try {
+                const jsonValue = JSON.parse(code);
+                const ast = xonParser.jsonToAst(jsonValue);
+                const formattedXon = xonParser.formatXon(ast, 4);
+                editor.setValue(formattedXon);
+                setFileModified(true);
+
+                const output = document.getElementById('output');
+                output.innerHTML = `<span style="color: #4caf50;">Xon Conversion:</span>\n\nConverted JSON to Xon and updated the editor.`;
+                output.className = 'output success';
+            } catch (e) {
+                alert('Editor does not contain valid JSON.');
+            }
+        }
+
+        function showConverter() {
+            const code = editor.getValue().trim();
+            if (!code) return;
+            try {
+                JSON.parse(code);
+                convertToXon();
+            } catch (_) {
+                convertToJSON();
             }
         }
 
         function showMinified() {
-            const code = editor.getValue();
+            const code = normalizeFunctionSyntax(editor.getValue());
+            if (!ensureParserReady()) {
+                alert('Parser still loading.');
+                return;
+            }
             try {
-                const result = xonParser.parse(code);
-                if (result.success) {
-                    const json = astToJSON(result.ast);
-                    const minified = JSON.stringify(json);
-                    
-                    const output = document.getElementById('output');
-                    output.innerHTML = `<span style="color: #4caf50;">Minified (${minified.length} chars):</span>\n\n${minified}`;
-                    output.className = 'output success';
+                const evaluated = xonParser.evaluate(code);
+                const parsed = evaluated.success ? { success: true, ast: evaluated.result } : xonParser.parse(code);
+                if (!parsed.success) {
+                    alert(`Cannot minify code.\n${parsed.error || evaluated.error}`);
+                    return;
                 }
+                const json = xonParser.astToJSON(parsed.ast);
+                const minified = JSON.stringify(json);
+
+                const output = document.getElementById('output');
+                output.innerHTML = `<span style="color: #4caf50;">Minified (${minified.length} chars):</span>\n\n${escapeHtml(minified)}`;
+                output.className = 'output success';
             } catch (e) {
-                alert('Cannot minify code with syntax errors.');
+                alert(`Cannot minify code.\n${e.message}`);
             }
         }
 
@@ -1506,8 +2233,8 @@ config: {
     server_name: "Production",  // Inline comment
     
     /* 
-       Multi-line comments not supported yet,
-       but single-line comments work great!
+       Multi-line comments are supported now,
+       just like single-line comments.
     */
     
     // Configuration sections
@@ -1602,6 +2329,122 @@ config: {
     // Single item arrays
     singleton: [42],
     single_obj: [{key: "value"}],
+}`,
+            variables: `{
+    // Variable declarations and references
+    let base = 10,
+    let rate = 1.5,
+    let enabled = true,
+
+    subtotal: base * rate,
+    final_total: subtotal + 2,
+    message: enabled && (final_total > 10) ? "active" : "inactive",
+}`,
+            functions: `{
+    // User-defined functions and closures
+    let tax = 0.16,
+    fx add_tax(amount, i) { amount + (amount * tax) },
+    function add(a, b) => a + b,
+    let raw = add(40, 2),
+
+    raw: raw,
+    with_tax: add_tax(raw, 0),
+}`,
+            conditionals: `{
+    // Conditional forms + nullish
+    let retries = null,
+    effective_retries: retries ?? 3,
+    mode: if (effective_retries > 1) "retry" else "single",
+    state: effective_retries > 2 ? "warm" : "cold",
+}`,
+            runtime_helpers: `{
+    // Runtime helpers from Round 2
+    nums: [1, 2, 3, 4, 5],
+    doubled: map(nums, (value, index) => value * 2),
+    evens: filter(nums, (value, index) => value % 2 == 0),
+    walk: while_loop(0, (state, i) => state < 5, (state, i) => state + 1, 32),
+}`,
+            template_scope: `{
+    // Scope + symbol helpers + template
+    let name = "Xon",
+    let role = "runtime",
+
+    greeting: template("Hello \${name} from \${role}"),
+    has_name: defined("name"),
+    visible_symbols: symbols(),
+    user_env: env("USER"),
+}`,
+            types_schema: `{
+    // Type and schema helpers from Round 3
+    sample: {
+        id: 1,
+        tags: ["core", "stable"],
+    },
+    sample_type: typeof(sample),
+    sample_schema: schema_of(sample),
+    schema_ok: conforms(sample, sample_schema),
+    checked_id: assert_type(sample.id, "number"),
+        }`
+        };
+
+        const docSnippets = {
+            first_file: `{
+    // First Xon file
+    app_name: "BillingService",
+    region: "us-east-1",
+    replicas: 3,
+    features: ["api", "audit",],
+}`,
+            build_source: `{
+    // config/app.xon
+    let default_region = "us-east-1",
+    let base_retries = 3,
+
+    app: {
+        name: "XonStarter",
+        region: default_region,
+    },
+
+    api: {
+        host: "0.0.0.0",
+        port: 8080,
+        retries: base_retries,
+        timeout_ms: 5000,
+    },
+
+    features: ["auth", "audit", "metrics",],
+}`,
+            expressions: `{
+    let base = 10,
+    let rate = 1.25,
+    let retries = null,
+
+    subtotal: base * rate + 2,
+    effective_retries: retries ?? 3,
+    mode: if (effective_retries > 1) "retry" else "single",
+    health: subtotal > 10 ? "ok" : "warn",
+}`,
+            functions_full: `{
+    let tax = 0.16,
+    function add(a, b) { a + b },
+    func mul(a, b) => a * b,
+    fun sub(a, b) => a - b,
+    fx add_tax(amount, i) { amount + (amount * tax) },
+    let square = function(x) { x * x },
+
+    sum: add(4, 5),
+    product: mul(4, 5),
+    reduced: sub(10, 3),
+    taxed: add_tax(100, 0),
+    squared: square(9),
+}`,
+            runtime_helpers: `{
+    let nums = [1, 2, 3, 4, 5],
+    doubled: map(nums, (v, i) => v * 2),
+    evens: filter(nums, (v, i) => v % 2 == 0),
+    walk: while_loop(0, (state, i) => state < 4, (state, i) => state + 1, 32),
+    let app = "Xon",
+    banner: template("Hello from \${app}"),
 }`
         };
 
@@ -1611,6 +2454,18 @@ config: {
             }
             editor.setValue(examples[name]);
             updateFilename(`${name}_example.xon`);
+            switchView('playground');
+            setTimeout(parseCode, 100);
+        }
+
+        function loadDocSnippet(name) {
+            const snippet = docSnippets[name];
+            if (!snippet) return;
+            if (fileModified && !confirm('You have unsaved changes. Load documentation snippet anyway?')) {
+                return;
+            }
+            editor.setValue(snippet);
+            updateFilename(`${name}.xon`);
             switchView('playground');
             setTimeout(parseCode, 100);
         }
@@ -1636,6 +2491,19 @@ config: {
             localStorage.setItem('xon_tabSize', size);
         }
 
+        async function changeExecutionMode() {
+            executionMode = document.getElementById('executionMode').value;
+            if (executionMode === 'sandbox') {
+                const healthy = await checkSandboxHealth();
+                if (!healthy) {
+                    executionMode = 'browser';
+                    document.getElementById('executionMode').value = 'browser';
+                }
+            }
+            updateEngineIndicator();
+            parseCode();
+        }
+
         function toggleAutoParse() {
             autoParseEnabled = document.getElementById('autoParse').value === 'true';
             localStorage.setItem('xon_autoParse', autoParseEnabled);
@@ -1647,6 +2515,12 @@ config: {
             localStorage.setItem('xon_lineNumbers', enabled);
         }
 
+        function setFormatOutput() {
+            formatOutputEnabled = document.getElementById('formatOutput').value !== 'false';
+            localStorage.setItem('xon_formatOutput', formatOutputEnabled);
+            parseCode();
+        }
+
         // Load saved settings
         function loadSettings() {
             const theme = localStorage.getItem('xon_theme');
@@ -1654,6 +2528,8 @@ config: {
             const tabSize = localStorage.getItem('xon_tabSize');
             const autoParse = localStorage.getItem('xon_autoParse');
             const lineNumbers = localStorage.getItem('xon_lineNumbers');
+            const storedFormatOutput = localStorage.getItem('xon_formatOutput');
+            localStorage.removeItem('xon_executionMode');
             
             if (theme) {
                 document.getElementById('editorTheme').value = theme;
@@ -1679,6 +2555,13 @@ config: {
                 document.getElementById('lineNumbers').value = enabled.toString();
                 editor.setOption('lineNumbers', enabled);
             }
+            executionMode = 'browser';
+            document.getElementById('executionMode').value = 'browser';
+            if (storedFormatOutput !== null) {
+                formatOutputEnabled = storedFormatOutput !== 'false';
+                document.getElementById('formatOutput').value = formatOutputEnabled ? 'true' : 'false';
+            }
+            updateEngineIndicator();
         }
 
         // Keyboard shortcuts
