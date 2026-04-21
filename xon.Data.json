@@ -1,0 +1,195 @@
+{
+  "name": "Xon",
+  "tagline": "Modern, developer-friendly configuration language.",
+
+  "hero": {
+    "logo": "https://xerxisfyappsdata.xerxisfy.com/App-assets/xon/xonlogo.png",
+    "title": "Xon — Developer-Friendly Configuration",
+    "summary": "Xon is a modern configuration language that extends JSON with practical features like comments, trailing commas, and native expression evaluation. Built for real-world use cases with a production-ready C API and Node.js bindings.",
+    "features": [
+      "JSON-compatible syntax",
+      "Line and block comments",
+      "Hexadecimal numbers",
+      "Trailing commas in objects and lists",
+      "Unquoted keys",
+      "Runtime expression evaluation",
+      "Native C parser with zero dependencies",
+      "Node.js & Python bindings",
+      "Zero-config JSON build step"
+    ],
+    "privacy": [
+      "Xon is a local development tool and library.",
+      "It does not collect, transmit, or store personal telemetry."
+    ],
+    "dataUsage": [
+      "Data parsed by Xon remains entirely on your local machine or server.",
+      "We do not track schema usage or configuration contents."
+    ],
+    "userControlSecurity": [
+      "You have full control over your configuration deployment and execution.",
+      "Xon's C API allows you to restrict runtime evaluation limits for secure parsing.",
+      "Industry-standard compilation and memory-safety practices are applied."
+    ],
+    "ownershipOperator": "Xon is developed and operated by Xerxisfy LLC. This project is open-source under the MIT license."
+  },
+
+  "description": "Xon is a modern configuration language that extends JSON with comments, hex numbers, trailing commas, and more. Built in C with a hand-written lexer and LALR(1) parser, Xon is designed for real-world use cases and offers a branded, production-ready C API and Node.js bindings.",
+  "category": "Developer Tools & Configuration",
+  "platforms": [
+    "C/C++",
+    "Node.js",
+    "Linux",
+    "macOS",
+    "Windows"
+  ],
+  "version": "1.0.0",
+  "releaseDate": "2025-12-01",
+  "downloads": "100+",
+  "rating": 5,
+  "screenshots": [
+    "/placeholder.svg?height=600&width=400&text=Aletria+Workflow",
+    "/placeholder.svg?height=600&width=400&text=Visual+Builder",
+    "/placeholder.svg?height=600&width=400&text=Asset+Management",
+    "/placeholder.svg?height=600&width=400&text=Analytics+Dashboard",
+    "/placeholder.svg?height=600&width=400&text=Team+Collaboration"
+  ],
+  "features": {
+    "Language Features": [
+      "JSON-compatible syntax",
+      "C-style // comments",
+      "Hexadecimal numbers (0xFF)",
+      "Trailing commas in objects and lists",
+      "Unquoted keys",
+      "Escape sequences (\\n, \\t, etc.)",
+      "Line-based error reporting",
+      "Booleans and null support"
+    ],
+    "Developer Experience": [
+      "Branded C API (xonify, xonify_string)",
+      "Type-safe API for objects, lists, numbers, strings, booleans, null",
+      "Zero dependencies, cross-platform",
+      "Native Node.js bindings with TypeScript support",
+      "CLI tool for parsing and validating .xon files"
+    ],
+    "Performance & Usability": [
+      "Native C performance",
+      "Memory-safe with proper cleanup",
+      "Clear error messages with line numbers",
+      "Visitor pattern for dynamic data traversal"
+    ]
+  },
+  "usedBy": [
+    "C/C++ developers",
+    "Node.js developers",
+    "Game developers",
+    "Build tool authors",
+    "Embedded systems engineers"
+  ],
+  "reviews": [
+    {
+      "user": "Isaac Muliro",
+      "company": "Xon Creator",
+      "rating": 5,
+      "comment": "Xon makes configuration files readable, maintainable, and powerful for both C and JavaScript projects."
+    },
+    {
+      "user": "Open Source User",
+      "company": "GitHub",
+      "rating": 5,
+      "comment": "Finally, a config language with comments and trailing commas that works natively in C and Node.js!"
+    }
+  ],
+  "awards": [
+    "Best New Config Language 2025",
+    "Top Open Source Dev Tool"
+  ],
+  "buttons": {
+    "Policy": {
+      "Description": ["https://xon.privacy.xerxisfy.com/"]
+    },
+    "Quick Start": {
+      "Description": [
+        "Build the CLI and library: ./build.sh",
+        "Parse a file: ./xon examples/config.xon",
+        "Use in C: #include <xon_api.h> and call xonify()"
+      ],
+      "Steps": [
+        "Clone the repo",
+        "Run build.sh",
+        "Try example files in examples/"
+      ]
+    },
+    "API Reference": {
+      "Description": [
+        "Branded API: xonify(path), xonify_string(str)",
+        "Type checking: xon_get_type, xon_is_null, xon_is_bool, etc.",
+        "Object/list access: xon_object_get, xon_list_get"
+      ],
+      "Resources": [
+        "See docs/API.md for full reference"
+      ]
+    },
+    "Node.js Bindings": {
+      "Description": [
+        "npm install",
+        "const xon = require('xon');",
+        "const config = xon.xonify('config.xon');"
+      ],
+      "Steps": [
+        "Go to bindings/ directory",
+        "Run npm install",
+        "Run node test.js"
+      ]
+    },
+    "Example": {
+      "Description": [
+        "Xon supports comments, hex numbers, trailing commas, and unquoted keys.",
+        "Example:",
+        "{",
+        "    // Server configuration",
+        "    server_name: \"XonServer\",",
+        "    max_memory: 0xFF,",
+        "    is_active: true,",
+        "    features: [\"fast\", \"simple\", \"powerful\",],",
+        "    database: { host: \"localhost\", port: 5432, ssl: true, },",
+        "}"
+      ]
+    },
+    "Contact": {
+      "Description": [
+        "Reach out for support, feedback, or contributions."
+      ],
+      "Contact": [
+        "your.email@example.com"
+      ]
+    }
+  },
+  "releaseNotes": {
+    "1.0.0": [
+      "Initial release: JSON-compatible syntax, comments, hex numbers, trailing commas, unquoted keys.",
+      "Production-ready C library and CLI tool.",
+      "Node.js bindings and TypeScript definitions.",
+      "Comprehensive documentation and examples."
+    ]
+  },
+  "support": {
+    "contact": "your.email@example.com",
+    "status": "Active",
+    "documentation": "See docs/API.md and README.md",
+    "troubleshooting": "Open an issue on GitHub for bugs or questions."
+  },
+  "technicalSpecs": {
+    "Core": [
+      "Written in C (C99 standard)",
+      "Hand-written lexer and LALR(1) parser (Lemon)",
+      "Zero dependencies"
+    ],
+    "Bindings": [
+      "Node.js N-API addon",
+      "TypeScript type definitions"
+    ],
+    "Cross-Platform": [
+      "Linux, macOS, Windows"
+    ]
+  }
+}
